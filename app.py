@@ -78,7 +78,15 @@ def cleanup_loop() -> None:
                     pass
 
 
-def run_video_job(job_id: str, video_input: str, api_key: str, clip_seconds: float, subtitle_style: str = "bold") -> None:
+def run_video_job(
+    job_id: str,
+    video_input: str,
+    api_key: str,
+    clip_seconds: float,
+    subtitle_style: str = "bold",
+    use_template: bool = False,
+    caption: str = "",
+) -> None:
     output_path = OUTPUT_DIR / f"clip_{job_id}.mp4"
     env = os.environ.copy()
     env["OPENAI_API_KEY"] = api_key
@@ -96,6 +104,10 @@ def run_video_job(job_id: str, video_input: str, api_key: str, clip_seconds: flo
         "--subtitle-style",
         subtitle_style,
     ]
+    if use_template:
+        command.append("--template")
+        if caption:
+            command.extend(["--caption", caption])
 
     set_job(job_id, status="running", message="Video isleniyor...", output=None, log="", step="", candidates=None)
 
@@ -198,6 +210,8 @@ def create_job():
     subtitle_style = str(payload.get("subtitle_style", "bold")).strip()
     if subtitle_style not in ("bold", "highlight", "minimal", "none"):
         subtitle_style = "bold"
+    use_template = bool(payload.get("use_template", False))
+    caption = str(payload.get("caption", "")).strip()[:200]
 
     if not video_input:
         return jsonify({"error": "Video yukleyin veya YouTube linki girin."}), 400
@@ -218,7 +232,7 @@ def create_job():
 
     thread = threading.Thread(
         target=run_video_job,
-        args=(job_id, video_input, api_key, clip_seconds, subtitle_style),
+        args=(job_id, video_input, api_key, clip_seconds, subtitle_style, use_template, caption),
         daemon=True,
     )
     thread.start()

@@ -655,6 +655,96 @@ def burn_subtitles(input_video: Path, ass_path: Path, output_path: Path) -> None
         raise RuntimeError("Altyazi yakma basarisiz oldu.")
 
 
+def apply_template(
+    input_video: Path,
+    output_path: Path,
+    start: float,
+    end: float,
+    caption_text: str = "",
+    target_width: int = 1080,
+    target_height: int = 1920,
+) -> None:
+    """Blurred-background vertical template: original video centered, blurred fill behind, caption on top."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fonts_dir = Path(__file__).resolve().parent / "fonts"
+    font_file = fonts_dir / "Bangers-Regular.ttf"
+
+    safe_caption = caption_text.replace("'", "’").replace("\\", "\\\\").replace(":", "\\:").replace("%", "%%")
+
+    vf_parts = []
+
+    # [0:v] -> trimmed clip
+    vf_parts.append(f"[0:v]trim=start={start}:end={end},setpts=PTS-STARTPTS[trimmed]")
+
+    # Background: scale to fill 1080x1920, crop, then blur
+    vf_parts.append(
+        f"[trimmed]scale={target_width}:{target_height}:force_original_aspect_ratio=increase,"
+        f"crop={target_width}:{target_height},"
+        f"gblur=sigma=40,eq=brightness=-0.08[bg]"
+    )
+
+    # Foreground: scale to fit inside the frame with padding for caption area
+    content_height = int(target_height * 0.55)
+    vf_parts.append(
+        f"[trimmed]scale={target_width}:{content_height}:force_original_aspect_ratio=decrease[fg]"
+    )
+
+    # Overlay foreground centered vertically (slightly below center to leave room for caption)
+    caption_area_height = int(target_height * 0.18)
+    overlay_y = f"(H-h)/2+{caption_area_height // 3}"
+    vf_parts.append(f"[bg][fg]overlay=(W-w)/2:{overlay_y}[composed]")
+
+    # Add caption text at top
+    if safe_caption:
+        fontsize = 52
+        if font_file.exists():
+            fontfile_str = str(font_file).replace(":", "\\:")
+            text_filter = (
+                f"drawtext=fontfile='{fontfile_str}'"
+                f":text='{safe_caption}'"
+                f":fontcolor=white:fontsize={fontsize}"
+                f":borderw=3:bordercolor=black"
+                f":x=(w-text_w)/2:y={caption_area_height // 2 - fontsize // 2}"
+                f":line_spacing=8"
+            )
+        else:
+            text_filter = (
+                f"drawtext=font='Bangers'"
+                f":text='{safe_caption}'"
+                f":fontcolor=white:fontsize={fontsize}"
+                f":borderw=3:bordercolor=black"
+                f":x=(w-text_w)/2:y={caption_area_height // 2 - fontsize // 2}"
+                f":line_spacing=8"
+            )
+        vf_parts.append(f"[composed]{text_filter}[out]")
+        final_label = "[out]"
+    else:
+        final_label = "[composed]"
+
+    filter_complex = ";".join(vf_parts)
+
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", str(input_video),
+        "-filter_complex", filter_complex,
+        "-map", final_label,
+        "-map", "0:a?",
+        "-ss", str(start),
+        "-t", str(end - start),
+        "-c:v", "libx264",
+        "-preset", "medium",
+        "-crf", "23",
+        "-c:a", "aac",
+        "-b:a", "128k",
+        "-movflags", "+faststart",
+        str(output_path),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"  ffmpeg template hatasi: {result.stderr[-800:]}")
+        raise RuntimeError("Template uygulama basarisiz oldu.")
+
+
 def cut_vertical_video(
     input_path: Path,
     output_path: Path,
@@ -698,6 +788,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cookies", type=Path, default=None)
     parser.add_argument("--num-clips", type=int, default=NUM_CANDIDATES)
     parser.add_argument("--subtitle-style", default="bold", choices=["bold", "highlight", "minimal", "none"])
+    parser.add_argument("--template", action="store_true", help="Blurred-background vertical template")
+    parser.add_argument("--caption", default="", help="Caption text for template overlay")
     return parser.parse_args()
 
 
@@ -806,6 +898,8 @@ def main() -> None:
         # Cut all candidates
         print("STEP:5/6 Klip adaylari kesiliyor...")
         use_subs = args.subtitle_style != "none"
+        use_template = args.template
+        caption = args.caption.strip()
 
         for i, cand in enumerate(candidates):
             start, end = clamp_clip(cand, video_duration, args.clip_seconds)
@@ -816,8 +910,40 @@ def main() -> None:
 
             print(f"  Aday #{i+1} kesiliyor: {seconds_to_stamp(start)} - {seconds_to_stamp(end)}")
 
-            if use_subs:
-                # Cut without subs first, then burn subs
+            target_w = int(args.target_height * DEFAULT_ASPECT_RATIO)
+
+            if use_template:
+                # Template mode: blurred background + centered video + caption
+                cand_caption = caption or cand.get("title", "")
+                raw_out = out.parent / f"{out.stem}_tmpl{out.suffix}"
+                apply_template(
+                    input_video=input_path,
+                    output_path=raw_out,
+                    start=start,
+                    end=end,
+                    caption_text=cand_caption,
+                    target_width=target_w,
+                    target_height=args.target_height,
+                )
+
+                if use_subs:
+                    clip_words = words_for_clip(words, start, end)
+                    phrases = group_words_into_phrases(clip_words, max_words=4)
+                    if phrases:
+                        ass_content = generate_ass_subtitles(
+                            phrases, args.subtitle_style, target_w, args.target_height
+                        )
+                        ass_path = tmp_path / f"subs_{i}.ass"
+                        ass_path.write_text(ass_content, encoding="utf-8")
+                        print(f"  Aday #{i+1} altyazi yakilyor ({len(phrases)} grup)...")
+                        burn_subtitles(raw_out, ass_path, out)
+                        raw_out.unlink(missing_ok=True)
+                    else:
+                        raw_out.rename(out)
+                else:
+                    raw_out.rename(out)
+
+            elif use_subs:
                 raw_out = out.parent / f"{out.stem}_nosub{out.suffix}"
                 cut_vertical_video(input_path, raw_out, start, end, args.target_height)
 
@@ -825,7 +951,6 @@ def main() -> None:
                 phrases = group_words_into_phrases(clip_words, max_words=4)
 
                 if phrases:
-                    target_w = int(args.target_height * DEFAULT_ASPECT_RATIO)
                     ass_content = generate_ass_subtitles(
                         phrases, args.subtitle_style, target_w, args.target_height
                     )

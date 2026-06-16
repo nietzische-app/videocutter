@@ -187,7 +187,20 @@
           <option value="none">Altyazisiz</option>
         </select>
       </div>
-      <div></div>
+      <div>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:28px;">
+          <input type="checkbox" id="useTemplate" checked style="width:18px;height:18px;accent-color:#ff6b35;">
+          <span>Sablon Modu</span>
+        </label>
+        <small style="color:#888;font-size:11px;">Bulanik arka plan + ortalanmis video + ust yazi</small>
+      </div>
+    </div>
+
+    <div id="captionRow" class="row" style="grid-template-columns: 1fr;">
+      <div>
+        <label for="captionText">Ust Yazi (Caption)</label>
+        <input id="captionText" type="text" placeholder="Kaynak veya dikkat cekici bir yazi... (bos birakirsan AI baslik kullanilir)" maxlength="200">
+      </div>
     </div>
 
     <button class="main-btn" id="startButton">Klipleri olustur</button>
@@ -224,6 +237,12 @@
     const errorBox = $("errorBox");
     const stepMessage = $("stepMessage");
     const toggleLog = $("toggleLog");
+
+    const templateCheck = $("useTemplate");
+    const captionRow = $("captionRow");
+    templateCheck.addEventListener("change", () => {
+      captionRow.style.display = templateCheck.checked ? "" : "none";
+    });
     const dropZone = $("dropZone");
     const fileInput = $("fileInput");
     const fileSelected = $("fileSelected");
@@ -418,7 +437,9 @@
         video_input: videoInput,
         api_key: $("apiKey").value,
         clip_seconds: Number($("clipSeconds").value || 30),
-        subtitle_style: $("subtitleStyle").value
+        subtitle_style: $("subtitleStyle").value,
+        use_template: $("useTemplate").checked,
+        caption: $("captionText").value.trim()
       };
 
       try {
