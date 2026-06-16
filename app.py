@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import subprocess
@@ -90,9 +91,11 @@ def run_video_job(job_id: str, video_input: str, api_key: str, clip_seconds: flo
         str(output_path),
         "--clip-seconds",
         str(clip_seconds),
+        "--num-clips",
+        "3",
     ]
 
-    set_job(job_id, status="running", message="Video isleniyor...", output=None, log="", step="")
+    set_job(job_id, status="running", message="Video isleniyor...", output=None, log="", step="", candidates=None)
 
     try:
         process = subprocess.Popen(
@@ -107,10 +110,18 @@ def run_video_job(job_id: str, video_input: str, api_key: str, clip_seconds: flo
         )
 
         log_lines: list[str] = []
+        candidates_json = None
         assert process.stdout is not None
         for line in process.stdout:
             stripped = line.strip()
             log_lines.append(line.rstrip())
+
+            if stripped.startswith("CANDIDATES_JSON:"):
+                try:
+                    candidates_json = json.loads(stripped[len("CANDIDATES_JSON:"):])
+                except Exception:
+                    pass
+                continue
 
             step_match = re.match(r"STEP:(\d+/\d+)\s+(.*)", stripped)
             if step_match:
@@ -128,11 +139,22 @@ def run_video_job(job_id: str, video_input: str, api_key: str, clip_seconds: flo
             set_job(job_id, status="failed", message="Islem basarisiz oldu.", log="\n".join(log_lines[-120:]))
             return
 
+        # Build outputs list for multiple candidates
+        outputs = []
+        if output_path.exists():
+            outputs.append({"path": str(output_path), "label": "Aday #1"})
+        for i in range(2, 4):
+            alt = output_path.parent / f"{output_path.stem}_aday{i}{output_path.suffix}"
+            if alt.exists():
+                outputs.append({"path": str(alt), "label": f"Aday #{i}"})
+
         set_job(
             job_id,
             status="done",
             message="Bitti!",
             output=str(output_path),
+            outputs=outputs,
+            candidates=candidates_json,
             log="\n".join(log_lines[-120:]),
         )
     except Exception as exc:
@@ -214,32 +236,58 @@ def get_job(job_id: str):
 
     response = dict(job)
     response.pop("upload_path", None)
+
+    outputs = response.get("outputs") or []
+    if outputs:
+        clip_list = []
+        for i, out in enumerate(outputs):
+            clip_list.append({
+                "label": out.get("label", f"Aday #{i+1}"),
+                "download_url": f"/download/{job_id}/{i}",
+                "preview_url": f"/preview/{job_id}/{i}",
+            })
+        response["clip_list"] = clip_list
+
     if response.get("output"):
-        response["download_url"] = f"/download/{job_id}"
-        response["preview_url"] = f"/preview/{job_id}"
+        response["download_url"] = f"/download/{job_id}/0"
+        response["preview_url"] = f"/preview/{job_id}/0"
+
+    response.pop("outputs", None)
     return jsonify(response)
 
 
-@app.get("/download/<job_id>")
-def download(job_id: str):
+def _get_output_path(job_id: str, clip_index: int) -> str | None:
+    job = JOBS.get(job_id)
+    if not job or job.get("status") != "done":
+        return None
+    outputs = job.get("outputs") or []
+    if 0 <= clip_index < len(outputs):
+        p = outputs[clip_index].get("path")
+        if p and Path(p).exists():
+            return p
+    if clip_index == 0 and job.get("output"):
+        return job["output"]
+    return None
+
+
+@app.get("/download/<job_id>/<int:clip_index>")
+def download(job_id: str, clip_index: int):
     if not _SAFE_JOB_ID_RE.match(job_id):
         return jsonify({"error": "Gecersiz job_id."}), 400
-    job = JOBS.get(job_id)
-    if not job or job.get("status") != "done" or not job.get("output"):
+    path = _get_output_path(job_id, clip_index)
+    if not path:
         return jsonify({"error": "Dosya hazir degil."}), 404
+    return send_file(path, as_attachment=True, download_name=f"clip_{clip_index+1}.mp4")
 
-    return send_file(job["output"], as_attachment=True, download_name="clip_vertical.mp4")
 
-
-@app.get("/preview/<job_id>")
-def preview(job_id: str):
+@app.get("/preview/<job_id>/<int:clip_index>")
+def preview(job_id: str, clip_index: int):
     if not _SAFE_JOB_ID_RE.match(job_id):
         return jsonify({"error": "Gecersiz job_id."}), 400
-    job = JOBS.get(job_id)
-    if not job or job.get("status") != "done" or not job.get("output"):
+    path = _get_output_path(job_id, clip_index)
+    if not path:
         return jsonify({"error": "Dosya hazir degil."}), 404
-
-    return send_file(job["output"], mimetype="video/mp4", conditional=True)
+    return send_file(path, mimetype="video/mp4", conditional=True)
 
 
 if __name__ == "__main__":

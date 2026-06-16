@@ -3,7 +3,9 @@ import json
 import math
 import os
 import shutil
+import struct
 import tempfile
+import wave
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -19,6 +21,7 @@ DEFAULT_CLIP_SECONDS = 30.0
 DEFAULT_ASPECT_RATIO = 9 / 16
 YOUTUBE_HOSTS = {"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"}
 CHUNKED_THRESHOLD_SECONDS = 300.0
+NUM_CANDIDATES = 3
 
 
 def is_url(value: str) -> bool:
@@ -50,6 +53,116 @@ def extract_audio(video_path: Path, audio_path: Path) -> None:
             codec="libmp3lame",
             logger=None,
         )
+
+
+def extract_audio_wav(video_path: Path, wav_path: Path) -> None:
+    with VideoFileClip(str(video_path)) as video:
+        if video.audio is None:
+            raise RuntimeError("Videoda ses parcasi bulunamadi.")
+        video.audio.write_audiofile(
+            str(wav_path),
+            fps=16000,
+            nbytes=2,
+            codec="pcm_s16le",
+            logger=None,
+        )
+
+
+def analyze_audio_energy(wav_path: Path, window_seconds: float = 1.0) -> list[dict]:
+    with wave.open(str(wav_path), "rb") as wf:
+        n_channels = wf.getnchannels()
+        sample_width = wf.getsampwidth()
+        framerate = wf.getframerate()
+        n_frames = wf.getnframes()
+
+        window_frames = int(framerate * window_seconds)
+        energies = []
+        offset = 0
+
+        while offset < n_frames:
+            chunk_size = min(window_frames, n_frames - offset)
+            raw = wf.readframes(chunk_size)
+            if not raw:
+                break
+
+            if sample_width == 2:
+                fmt = f"<{chunk_size * n_channels}h"
+                try:
+                    samples = struct.unpack(fmt, raw)
+                except struct.error:
+                    break
+            else:
+                break
+
+            if n_channels > 1:
+                samples = samples[::n_channels]
+
+            rms = math.sqrt(sum(s * s for s in samples) / max(len(samples), 1))
+            t_start = offset / framerate
+            t_end = (offset + chunk_size) / framerate
+
+            energies.append({
+                "start": t_start,
+                "end": t_end,
+                "rms": rms,
+            })
+            offset += chunk_size
+
+    return energies
+
+
+def find_energy_peaks(
+    energies: list[dict],
+    clip_seconds: float,
+    video_duration: float,
+    top_n: int = 5,
+) -> list[dict]:
+    if not energies:
+        return []
+
+    max_rms = max(e["rms"] for e in energies) or 1.0
+    for e in energies:
+        e["norm_rms"] = e["rms"] / max_rms
+
+    window_count = max(1, int(clip_seconds / (energies[0]["end"] - energies[0]["start"])))
+
+    scored_windows: list[dict] = []
+    for i in range(len(energies) - window_count + 1):
+        window = energies[i:i + window_count]
+        avg_energy = sum(e["norm_rms"] for e in window) / len(window)
+        peak_energy = max(e["norm_rms"] for e in window)
+        variance = sum((e["norm_rms"] - avg_energy) ** 2 for e in window) / len(window)
+
+        # High energy + high variance = exciting (loud moments with contrast)
+        score = avg_energy * 0.4 + peak_energy * 0.3 + math.sqrt(variance) * 0.3
+
+        w_start = window[0]["start"]
+        w_end = min(window[-1]["end"], video_duration)
+
+        scored_windows.append({
+            "start": w_start,
+            "end": w_end,
+            "energy_score": round(score, 4),
+            "avg_energy": round(avg_energy, 4),
+            "peak_energy": round(peak_energy, 4),
+        })
+
+    scored_windows.sort(key=lambda w: w["energy_score"], reverse=True)
+
+    # Deduplicate: remove overlapping windows
+    selected = []
+    for w in scored_windows:
+        overlaps = False
+        for s in selected:
+            if w["start"] < s["end"] and w["end"] > s["start"]:
+                overlaps = True
+                break
+        if not overlaps:
+            selected.append(w)
+        if len(selected) >= top_n:
+            break
+
+    return selected
 
 
 def download_youtube_video(url: str, output_dir: Path, cookies_file: Path | None = None) -> Path:
@@ -151,47 +264,87 @@ def transcript_for_prompt(lines: list[dict], max_chars: int) -> str:
     )
 
 
-def ask_gpt_for_clip(
+SYSTEM_PROMPT = """\
+Sen viral kisa video editorusun. Gorevin transkriptten TikTok/Reels/Shorts icin \
+en cok izlenecek, paylasilacak ve begeni alacak anlari bulmak.
+
+Aradigin sey:
+1. HOOK - Ilk 3 saniyede izleyiciyi yakalayan surpriz, soru veya carpici ifade
+2. CATISMA/GERILIM - Tartisma, sasirma, beklenmedik cevap, provokasyon
+3. DUYGU PATLAMASI - Kahkaha, ofke, heyecan, saskinlik, aglamalik an
+4. SURPRIZ/TWIST - Beklenmedik bilgi, ters kose, "bunu bilmiyordunuz" ani
+5. VIRAL REPLIK - Tek basina paylasilabilir, meme olabilecek cumleler
+
+KACINMAN gerekenler:
+- Sıradan tanitim, giris veya kapanıs konusmasi
+- Monoton anlatim, liste okuma, teknik aciklama
+- Sessizlik veya duraklama agirlikli bolumler
+
+Her zaman izleyicinin KAYDIRMAYI DURDURACAGI ani sec.\
+"""
+
+
+def ask_gpt_for_clips(
     client: OpenAI,
     model: str,
     transcript: str,
     video_duration: float,
     clip_seconds: float,
-) -> dict:
+    energy_hints: str,
+    num_clips: int = NUM_CANDIDATES,
+) -> list[dict]:
     schema = {
         "type": "object",
         "additionalProperties": False,
         "properties": {
-            "start_time": {"type": "number", "description": "Chosen clip start time in seconds."},
-            "end_time": {"type": "number", "description": "Chosen clip end time in seconds."},
-            "score": {"type": "integer", "minimum": 1, "maximum": 10},
-            "reason": {"type": "string"},
-            "title": {"type": "string"},
+            "clips": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "start_time": {"type": "number"},
+                        "end_time": {"type": "number"},
+                        "score": {"type": "integer", "minimum": 1, "maximum": 10},
+                        "viral_type": {"type": "string", "description": "hook/catisma/duygu/surpriz/replik"},
+                        "reason": {"type": "string"},
+                        "title": {"type": "string"},
+                    },
+                    "required": ["start_time", "end_time", "score", "viral_type", "reason", "title"],
+                },
+            },
         },
-        "required": ["start_time", "end_time", "score", "reason", "title"],
+        "required": ["clips"],
     }
+
+    user_content = (
+        f"Video suresi: {video_duration:.2f} saniye.\n"
+        f"Istenen klip suresi: ~{clip_seconds:.0f} saniye.\n"
+        f"Istenen aday sayisi: {num_clips}\n\n"
+    )
+
+    if energy_hints:
+        user_content += (
+            "SES ENERJISI ANALIZI (yuksek enerji = heyecanli, bagirma, kahkaha vs.):\n"
+            f"{energy_hints}\n\n"
+        )
+
+    user_content += (
+        "Gorev:\n"
+        f"- Transkriptten en iyi {num_clips} farkli klip araligi sec\n"
+        "- Her klip farkli bir andan olmali (ust uste binmesin)\n"
+        "- Ses enerjisi yuksek bolgeler oncelikli olsun\n"
+        "- Her klip mumkun oldugunca tam istenen surede olsun\n"
+        "- Cumlenin ortasinda baslamasin\n"
+        "- En yuksek puanlisi ilk sirada olsun\n\n"
+        f"Transkript:\n{transcript}"
+    )
 
     response = client.responses.create(
         model=model,
         input=[
-            {
-                "role": "system",
-                "content": (
-                    "Sen kisa video editorusun. Transkriptte en heyecanli, merak uyandiran, "
-                    "duygusal, komik veya vurucu ani bul. Yalnizca JSON semasina uygun yanit ver."
-                ),
-            },
-            {
-                "role": "user",
-                "content": (
-                    f"Video suresi: {video_duration:.2f} saniye.\n"
-                    f"Istenen klip suresi: {clip_seconds:.2f} saniye.\n\n"
-                    "Gorev: En iyi tek klip araligini sec. Secilen aralik mumkun oldugunca "
-                    "tam istenen surede olsun, video sinirlarini asmasin ve cumlenin ortasinda "
-                    "baslamamaya calissin.\n\n"
-                    f"Transkript:\n{transcript}"
-                ),
-            },
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_content},
         ],
         text={
             "format": {
@@ -202,17 +355,20 @@ def ask_gpt_for_clip(
             }
         },
     )
-    return json.loads(response.output_text)
+    result = json.loads(response.output_text)
+    return result.get("clips", [])
 
 
-def ask_gpt_for_clip_chunked(
+def ask_gpt_for_clips_chunked(
     client: OpenAI,
     model: str,
     lines: list[dict],
     video_duration: float,
     clip_seconds: float,
     max_transcript_chars: int,
-) -> dict:
+    energy_hints: str,
+    num_clips: int = NUM_CANDIDATES,
+) -> list[dict]:
     window_seconds = clip_seconds * 10
     overlap_seconds = clip_seconds * 2
     step = window_seconds - overlap_seconds
@@ -232,20 +388,24 @@ def ask_gpt_for_clip_chunked(
     total = len(windows)
     print(f"  {total} pencere analiz edilecek...")
 
-    best: dict | None = None
+    all_clips: list[dict] = []
     for i, (w_start, w_end, w_lines) in enumerate(windows, 1):
         print(f"  Pencere {i}/{total}: {seconds_to_stamp(w_start)} - {seconds_to_stamp(w_end)}")
         prompt_text = transcript_for_prompt(w_lines, max_transcript_chars)
         try:
-            sel = ask_gpt_for_clip(client, model, prompt_text, video_duration, clip_seconds)
-            if best is None or sel.get("score", 0) > best.get("score", 0):
-                best = sel
+            clips = ask_gpt_for_clips(
+                client, model, prompt_text, video_duration,
+                clip_seconds, energy_hints, num_clips=1,
+            )
+            all_clips.extend(clips)
         except Exception as exc:
             print(f"  Pencere {i} hata: {exc}")
 
-    if best is None:
+    if not all_clips:
         raise RuntimeError("Hicbir pencere icin GPT sonucu alinamadi.")
-    return best
+
+    all_clips.sort(key=lambda c: c.get("score", 0), reverse=True)
+    return all_clips[:num_clips]
 
 
 def clamp_clip(selection: dict, video_duration: float, clip_seconds: float) -> tuple[float, float]:
@@ -332,17 +492,18 @@ def cut_vertical_video(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="OpenAI Whisper + GPT API ile videodan en iyi dikey 30 saniyeik klibi keser."
+        description="OpenAI Whisper + GPT API ile videodan en iyi dikey klibi keser."
     )
     parser.add_argument("input", help="Kaynak video yolu veya YouTube linki")
     parser.add_argument("-o", "--output", type=Path, default=Path("outputs/clip_vertical.mp4"))
     parser.add_argument("--clip-seconds", type=float, default=DEFAULT_CLIP_SECONDS)
-    parser.add_argument("--language", default="tr", help="Transkripsiyon dili. Otomatik algilama icin bos birakin.")
+    parser.add_argument("--language", default="tr", help="Transkripsiyon dili.")
     parser.add_argument("--whisper-model", default="whisper-1")
     parser.add_argument("--gpt-model", default="gpt-4.1-mini")
     parser.add_argument("--target-height", type=int, default=1920)
     parser.add_argument("--max-transcript-chars", type=int, default=100_000)
-    parser.add_argument("--cookies", type=Path, default=None, help="YouTube cookie dosyasi (Netscape format)")
+    parser.add_argument("--cookies", type=Path, default=None)
+    parser.add_argument("--num-clips", type=int, default=NUM_CANDIDATES)
     return parser.parse_args()
 
 
@@ -361,23 +522,40 @@ def main() -> None:
         if is_url(args.input):
             if not is_youtube_url(args.input):
                 raise ValueError("Su an yalnizca YouTube linkleri destekleniyor.")
-            print("STEP:1/5 YouTube videosu indiriliyor...")
+            print("STEP:1/6 YouTube videosu indiriliyor...")
             cookies_file = args.cookies or Path(__file__).resolve().parent / "cookies.txt"
             input_path = download_youtube_video(args.input, tmp_path, cookies_file=cookies_file)
         else:
             input_path = Path(args.input).resolve()
             if not input_path.exists():
                 raise FileNotFoundError(f"Video bulunamadi: {input_path}")
-            print("STEP:1/5 Video hazirlaniyor...")
+            print("STEP:1/6 Video hazirlaniyor...")
 
         with VideoFileClip(str(input_path)) as video:
             video_duration = float(video.duration)
 
         audio_path = tmp_path / "audio.mp3"
-        print("STEP:2/5 Ses cikariliyor...")
+        wav_path = tmp_path / "audio.wav"
+        print("STEP:2/6 Ses cikariliyor ve analiz ediliyor...")
         extract_audio(input_path, audio_path)
+        extract_audio_wav(input_path, wav_path)
 
-        print("STEP:3/5 Ses metne dokuluyor...")
+        print("  Ses enerjisi analiz ediliyor...")
+        energies = analyze_audio_energy(wav_path, window_seconds=1.0)
+        energy_peaks = find_energy_peaks(energies, args.clip_seconds, video_duration, top_n=5)
+
+        energy_hints = ""
+        if energy_peaks:
+            lines_hint = []
+            for i, peak in enumerate(energy_peaks, 1):
+                lines_hint.append(
+                    f"  #{i} [{seconds_to_stamp(peak['start'])} - {seconds_to_stamp(peak['end'])}] "
+                    f"enerji={peak['energy_score']}"
+                )
+            energy_hints = "En yuksek ses enerjisi olan bolumler:\n" + "\n".join(lines_hint)
+            print(energy_hints)
+
+        print("STEP:3/6 Ses metne dokuluyor...")
         transcript_json = transcribe_audio(
             client=client,
             audio_path=audio_path,
@@ -392,37 +570,57 @@ def main() -> None:
         lines = words_to_timed_lines(words)
 
         if video_duration > CHUNKED_THRESHOLD_SECONDS:
-            print("STEP:4/5 GPT en iyi ani seciyor (parcali analiz)...")
-            selection = ask_gpt_for_clip_chunked(
+            print("STEP:4/6 GPT en iyi anlari seciyor (parcali analiz)...")
+            candidates = ask_gpt_for_clips_chunked(
                 client=client,
                 model=args.gpt_model,
                 lines=lines,
                 video_duration=video_duration,
                 clip_seconds=args.clip_seconds,
                 max_transcript_chars=args.max_transcript_chars,
+                energy_hints=energy_hints,
+                num_clips=args.num_clips,
             )
         else:
-            print("STEP:4/5 GPT en iyi ani seciyor...")
+            print("STEP:4/6 GPT en iyi anlari seciyor...")
             prompt_transcript = transcript_for_prompt(lines, args.max_transcript_chars)
-            selection = ask_gpt_for_clip(
+            candidates = ask_gpt_for_clips(
                 client=client,
                 model=args.gpt_model,
                 transcript=prompt_transcript,
                 video_duration=video_duration,
                 clip_seconds=args.clip_seconds,
+                energy_hints=energy_hints,
+                num_clips=args.num_clips,
             )
 
-        start, end = clamp_clip(selection, video_duration, args.clip_seconds)
+        # Output candidates as JSON for the web app to parse
+        print("CANDIDATES_JSON:" + json.dumps(candidates, ensure_ascii=False))
 
-        print(
-            "Secilen aralik:",
-            f"{seconds_to_stamp(start)} - {seconds_to_stamp(end)}",
-            f"(puan: {selection.get('score')}/10)",
-        )
-        print("Gerekce:", selection.get("reason", ""))
+        for i, cand in enumerate(candidates, 1):
+            s, e = clamp_clip(cand, video_duration, args.clip_seconds)
+            print(
+                f"  Aday #{i}: {seconds_to_stamp(s)} - {seconds_to_stamp(e)} "
+                f"(puan: {cand.get('score')}/10, tur: {cand.get('viral_type', '?')})"
+            )
+            print(f"    Baslik: {cand.get('title', '')}")
+            print(f"    Gerekce: {cand.get('reason', '')}")
 
-        print("STEP:5/5 Dikey video kesiliyor...")
-        cut_vertical_video(input_path, output_path, start, end, args.target_height)
+        if not candidates:
+            raise RuntimeError("GPT hicbir klip adayi dondurmedi.")
+
+        # Cut all candidates
+        print("STEP:5/6 Klip adaylari kesiliyor...")
+        for i, cand in enumerate(candidates):
+            start, end = clamp_clip(cand, video_duration, args.clip_seconds)
+            if i == 0:
+                out = output_path
+            else:
+                out = output_path.parent / f"{output_path.stem}_aday{i+1}{output_path.suffix}"
+            print(f"  Aday #{i+1} kesiliyor: {seconds_to_stamp(start)} - {seconds_to_stamp(end)}")
+            cut_vertical_video(input_path, out, start, end, args.target_height)
+
+        print("STEP:6/6 Tamamlandi!")
         print(f"Bitti: {output_path}")
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
