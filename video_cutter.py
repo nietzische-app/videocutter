@@ -62,7 +62,7 @@ def download_youtube_video(url: str, output_dir: Path, cookies_file: Path | None
 
     output_template = str(output_dir / "youtube_source.%(ext)s")
     options = {
-        "format": "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/best",
+        "format": "bv*[height<=720][ext=mp4]+ba[ext=m4a]/b[ext=mp4][height<=720]/best[height<=720]/best",
         "merge_output_format": "mp4",
         "outtmpl": output_template,
         "quiet": False,
