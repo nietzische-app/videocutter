@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Video Kesici</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Inter, Segoe UI, Arial, sans-serif;
+      background: #f5f7fb;
+      color: #172033;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 28px;
+    }
+
+    main {
+      width: min(760px, 100%);
+      background: #ffffff;
+      border: 1px solid #d9e1ef;
+      border-radius: 12px;
+      box-shadow: 0 18px 60px rgba(24, 39, 75, 0.12);
+      padding: 32px;
+    }
+
+    h1 {
+      margin: 0 0 4px;
+      font-size: 28px;
+      line-height: 1.2;
+    }
+
+    .subtitle {
+      margin: 0 0 24px;
+      font-size: 14px;
+      color: #64748b;
+    }
+
+    label {
+      display: block;
+      margin: 16px 0 6px;
+      font-weight: 700;
+      font-size: 13px;
+      color: #374151;
+    }
+
+    input {
+      width: 100%;
+      box-sizing: border-box;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      padding: 11px 13px;
+      font: inherit;
+      font-size: 14px;
+      background: #fff;
+      transition: border-color 0.2s;
+    }
+
+    input:focus {
+      outline: none;
+      border-color: #1967d2;
+      box-shadow: 0 0 0 3px rgba(25, 103, 210, 0.12);
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 140px;
+      gap: 14px;
+    }
+
+    button {
+      margin-top: 22px;
+      width: 100%;
+      border: 0;
+      border-radius: 8px;
+      padding: 13px 16px;
+      background: #1967d2;
+      color: white;
+      font: inherit;
+      font-size: 15px;
+      font-weight: 800;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    button:hover:not(:disabled) {
+      background: #1557b0;
+    }
+
+    button:disabled {
+      background: #94a3b8;
+      cursor: wait;
+    }
+
+    /* Progress steps */
+    .progress-container {
+      display: none;
+      margin-top: 24px;
+      padding: 20px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+    }
+
+    .steps {
+      display: flex;
+      gap: 4px;
+      justify-content: space-between;
+      position: relative;
+    }
+
+    .steps::before {
+      content: "";
+      position: absolute;
+      top: 15px;
+      left: 20px;
+      right: 20px;
+      height: 2px;
+      background: #e2e8f0;
+      z-index: 0;
+    }
+
+    .step {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      flex: 1;
+      z-index: 1;
+    }
+
+    .dot {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background: #e2e8f0;
+      display: grid;
+      place-items: center;
+      font-size: 13px;
+      font-weight: 700;
+      color: #94a3b8;
+      transition: all 0.3s;
+      border: 2px solid #e2e8f0;
+    }
+
+    .step.active .dot {
+      background: #fff;
+      border-color: #1967d2;
+      color: #1967d2;
+      box-shadow: 0 0 0 4px rgba(25, 103, 210, 0.15);
+    }
+
+    .step.done .dot {
+      background: #16a34a;
+      border-color: #16a34a;
+      color: #fff;
+    }
+
+    .step-label {
+      font-size: 11px;
+      margin-top: 6px;
+      color: #94a3b8;
+      font-weight: 600;
+      text-align: center;
+    }
+
+    .step.active .step-label { color: #1967d2; }
+    .step.done .step-label { color: #16a34a; }
+
+    #stepMessage {
+      margin-top: 12px;
+      font-size: 13px;
+      color: #475569;
+      text-align: center;
+    }
+
+    /* Result section */
+    .result-section {
+      display: none;
+      margin-top: 20px;
+      padding: 20px;
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: 10px;
+      text-align: center;
+    }
+
+    .result-section h3 {
+      margin: 0 0 12px;
+      color: #166534;
+      font-size: 16px;
+    }
+
+    .result-section video {
+      width: 100%;
+      max-height: 480px;
+      border-radius: 8px;
+      background: #000;
+    }
+
+    .result-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      margin-top: 14px;
+    }
+
+    .result-actions a {
+      display: inline-block;
+      padding: 10px 24px;
+      background: #1967d2;
+      color: #fff;
+      text-decoration: none;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 14px;
+      transition: background 0.2s;
+    }
+
+    .result-actions a:hover {
+      background: #1557b0;
+    }
+
+    /* Error box */
+    .error-box {
+      display: none;
+      margin-top: 20px;
+      padding: 14px 18px;
+      background: #fef2f2;
+      border: 1px solid #fca5a5;
+      border-radius: 10px;
+      color: #991b1b;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    /* Log */
+    pre {
+      display: none;
+      margin: 16px 0 0;
+      max-height: 220px;
+      overflow: auto;
+      white-space: pre-wrap;
+      background: #0f172a;
+      color: #d1fae5;
+      border-radius: 8px;
+      padding: 14px;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .toggle-log {
+      display: none;
+      margin-top: 12px;
+      background: none;
+      border: 1px solid #d1d5db;
+      color: #475569;
+      font-size: 12px;
+      padding: 6px 14px;
+      cursor: pointer;
+      width: auto;
+      border-radius: 6px;
+    }
+
+    .toggle-log:hover { background: #f1f5f9; }
+
+    @media (max-width: 640px) {
+      body { padding: 12px; }
+      main { padding: 20px; }
+      .row { grid-template-columns: 1fr; }
+      h1 { font-size: 22px; }
+      .dot { width: 24px; height: 24px; font-size: 11px; }
+      .step-label { font-size: 10px; }
+      .result-section video { max-height: 60vh; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Video Kesici</h1>
+    <p class="subtitle">YouTube linki veya video dosyasi girin, yapay zeka en iyi ani secip dikey klip uretsin.</p>
+
+    <label for="videoInput">YouTube linki veya video yolu</label>
+    <input id="videoInput" placeholder="https://www.youtube.com/watch?v=..." autocomplete="off">
+
+    <div class="row">
+      <div>
+        <label for="apiKey">OpenAI API Key</label>
+        <input id="apiKey" type="password" placeholder="Sunucuda kayitliysa bos birakin" autocomplete="off">
+      </div>
+      <div>
+        <label for="clipSeconds">Sure (sn)</label>
+        <input id="clipSeconds" type="number" min="5" max="180" value="30">
+      </div>
+    </div>
+
+    <button id="startButton">Klibi olustur</button>
+
+    <div class="progress-container" id="progress">
+      <div class="steps">
+        <div class="step" data-step="1">
+          <span class="dot">1</span>
+          <span class="step-label">Hazirlama</span>
+        </div>
+        <div class="step" data-step="2">
+          <span class="dot">2</span>
+          <span class="step-label">Ses</span>
+        </div>
+        <div class="step" data-step="3">
+          <span class="dot">3</span>
+          <span class="step-label">Transkript</span>
+        </div>
+        <div class="step" data-step="4">
+          <span class="dot">4</span>
+          <span class="step-label">AI Analiz</span>
+        </div>
+        <div class="step" data-step="5">
+          <span class="dot">5</span>
+          <span class="step-label">Kesim</span>
+        </div>
+      </div>
+      <div id="stepMessage"></div>
+    </div>
+
+    <div class="result-section" id="resultSection">
+      <h3>Klip hazir!</h3>
+      <video id="videoPreview" controls playsinline></video>
+      <div class="result-actions">
+        <a id="downloadLink" href="#">MP4 Indir</a>
+      </div>
+    </div>
+
+    <div class="error-box" id="errorBox"></div>
+
+    <button class="toggle-log" id="toggleLog">Isleme logunu goster</button>
+    <pre id="log"></pre>
+  </main>
+
+  <script>
+    const startButton = document.getElementById("startButton");
+    const logBox = document.getElementById("log");
+    const downloadLink = document.getElementById("downloadLink");
+    const progressEl = document.getElementById("progress");
+    const resultSection = document.getElementById("resultSection");
+    const errorBox = document.getElementById("errorBox");
+    const stepMessage = document.getElementById("stepMessage");
+    const toggleLog = document.getElementById("toggleLog");
+    const videoPreview = document.getElementById("videoPreview");
+
+    toggleLog.addEventListener("click", () => {
+      const visible = logBox.style.display === "block";
+      logBox.style.display = visible ? "none" : "block";
+      toggleLog.textContent = visible ? "Isleme logunu goster" : "Logu gizle";
+    });
+
+    function resetUI() {
+      resultSection.style.display = "none";
+      errorBox.style.display = "none";
+      logBox.style.display = "none";
+      logBox.textContent = "";
+      toggleLog.style.display = "none";
+      toggleLog.textContent = "Isleme logunu goster";
+      videoPreview.removeAttribute("src");
+      progressEl.style.display = "block";
+      document.querySelectorAll(".step").forEach(el => {
+        el.classList.remove("done", "active");
+      });
+      stepMessage.textContent = "";
+    }
+
+    function updateSteps(stepStr) {
+      if (!stepStr) return;
+      const match = stepStr.match(/(\d+)\/(\d+)/);
+      if (!match) return;
+      const current = parseInt(match[1]);
+      document.querySelectorAll(".step").forEach(el => {
+        const s = parseInt(el.dataset.step);
+        el.classList.toggle("done", s < current);
+        el.classList.toggle("active", s === current);
+      });
+    }
+
+    function markAllDone() {
+      document.querySelectorAll(".step").forEach(el => {
+        el.classList.add("done");
+        el.classList.remove("active");
+      });
+    }
+
+    async function pollJob(jobId) {
+      let response;
+      try {
+        response = await fetch(`/api/jobs/${jobId}`);
+      } catch {
+        setTimeout(() => pollJob(jobId), 3000);
+        return;
+      }
+      const job = await response.json();
+
+      if (job.step) updateSteps(job.step);
+      stepMessage.textContent = job.message || "";
+
+      if (job.log) {
+        toggleLog.style.display = "block";
+        logBox.textContent = job.log;
+        logBox.scrollTop = logBox.scrollHeight;
+      }
+
+      if (job.status === "done") {
+        startButton.disabled = false;
+        markAllDone();
+        stepMessage.textContent = "";
+
+        resultSection.style.display = "block";
+        downloadLink.href = job.download_url;
+        if (job.preview_url) {
+          videoPreview.src = job.preview_url;
+        }
+        return;
+      }
+
+      if (job.status === "failed") {
+        startButton.disabled = false;
+        progressEl.style.display = "none";
+        errorBox.textContent = job.message || "Islem basarisiz oldu.";
+        errorBox.style.display = "block";
+        return;
+      }
+
+      setTimeout(() => pollJob(jobId), 2000);
+    }
+
+    startButton.addEventListener("click", async () => {
+      const videoInput = document.getElementById("videoInput").value.trim();
+      if (!videoInput) {
+        errorBox.textContent = "Lutfen bir YouTube linki veya video yolu girin.";
+        errorBox.style.display = "block";
+        return;
+      }
+
+      startButton.disabled = true;
+      resetUI();
+
+      const payload = {
+        video_input: videoInput,
+        api_key: document.getElementById("apiKey").value,
+        clip_seconds: Number(document.getElementById("clipSeconds").value || 30)
+      };
+
+      try {
+        const response = await fetch("/api/jobs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "Islem baslatilamadi.");
+        }
+        pollJob(data.job_id);
+      } catch (error) {
+        progressEl.style.display = "none";
+        errorBox.textContent = error.message;
+        errorBox.style.display = "block";
+        startButton.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
