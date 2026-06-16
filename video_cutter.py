@@ -4,6 +4,7 @@ import math
 import os
 import shutil
 import struct
+import subprocess
 import tempfile
 import wave
 from pathlib import Path
@@ -22,6 +23,45 @@ DEFAULT_ASPECT_RATIO = 9 / 16
 YOUTUBE_HOSTS = {"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"}
 CHUNKED_THRESHOLD_SECONDS = 300.0
 NUM_CANDIDATES = 3
+
+SUBTITLE_STYLES = {
+    "bold": {
+        "fontname": "Arial",
+        "fontsize": 58,
+        "primary_color": "&H00FFFFFF",  # white
+        "outline_color": "&H00000000",  # black
+        "back_color": "&H80000000",
+        "bold": 1,
+        "outline": 3,
+        "shadow": 2,
+        "alignment": 2,  # bottom center
+        "margin_v": 120,
+    },
+    "highlight": {
+        "fontname": "Arial",
+        "fontsize": 62,
+        "primary_color": "&H0000FFFF",  # yellow
+        "outline_color": "&H00000000",
+        "back_color": "&H80000000",
+        "bold": 1,
+        "outline": 4,
+        "shadow": 0,
+        "alignment": 5,  # center
+        "margin_v": 50,
+    },
+    "minimal": {
+        "fontname": "Arial",
+        "fontsize": 42,
+        "primary_color": "&H00FFFFFF",
+        "outline_color": "&H00000000",
+        "back_color": "&H00000000",
+        "bold": 0,
+        "outline": 2,
+        "shadow": 1,
+        "alignment": 2,
+        "margin_v": 80,
+    },
+}
 
 
 def is_url(value: str) -> bool:
@@ -462,6 +502,112 @@ def crop_to_vertical(clip, target_height: int):
     return resize_clip(cropped, height=target_height)
 
 
+def words_for_clip(words: list[dict], start: float, end: float) -> list[dict]:
+    clip_words = []
+    for w in words:
+        ws = float(w.get("start", 0))
+        we = float(w.get("end", ws))
+        if we > start and ws < end:
+            clip_words.append({
+                "word": w.get("word", ""),
+                "start": max(ws - start, 0),
+                "end": min(we - start, end - start),
+            })
+    return clip_words
+
+
+def group_words_into_phrases(words: list[dict], max_words: int = 4, max_gap: float = 0.8) -> list[dict]:
+    phrases = []
+    current: list[dict] = []
+
+    for w in words:
+        text = str(w.get("word", "")).strip()
+        if not text:
+            continue
+
+        if current and (
+            len(current) >= max_words
+            or w["start"] - current[-1]["end"] > max_gap
+        ):
+            phrases.append({
+                "start": current[0]["start"],
+                "end": current[-1]["end"],
+                "text": " ".join(c["word"].strip() for c in current),
+            })
+            current = []
+
+        current.append(w)
+
+    if current:
+        phrases.append({
+            "start": current[0]["start"],
+            "end": current[-1]["end"],
+            "text": " ".join(c["word"].strip() for c in current),
+        })
+
+    return phrases
+
+
+def _ass_timestamp(seconds: float) -> str:
+    seconds = max(0, seconds)
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    s = seconds % 60
+    return f"{h}:{m:02d}:{s:05.2f}"
+
+
+def generate_ass_subtitles(
+    phrases: list[dict],
+    style_name: str = "bold",
+    video_width: int = 1080,
+    video_height: int = 1920,
+) -> str:
+    style = SUBTITLE_STYLES.get(style_name, SUBTITLE_STYLES["bold"])
+
+    header = f"""[Script Info]
+Title: Auto Subtitles
+ScriptType: v4.00+
+PlayResX: {video_width}
+PlayResY: {video_height}
+WrapStyle: 0
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,{style['fontname']},{style['fontsize']},{style['primary_color']},&H000000FF,{style['outline_color']},{style['back_color']},{style['bold']},0,0,0,100,100,0,0,1,{style['outline']},{style['shadow']},{style['alignment']},40,40,{style['margin_v']},1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+
+    events = []
+    for phrase in phrases:
+        start_ts = _ass_timestamp(phrase["start"])
+        end_ts = _ass_timestamp(phrase["end"])
+        text = phrase["text"].replace("\n", "\\N").upper()
+        events.append(f"Dialogue: 0,{start_ts},{end_ts},Default,,0,0,0,,{text}")
+
+    return header + "\n".join(events) + "\n"
+
+
+def burn_subtitles(input_video: Path, ass_path: Path, output_path: Path) -> None:
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", str(input_video),
+        "-vf", f"ass={str(ass_path)}",
+        "-c:v", "libx264",
+        "-preset", "medium",
+        "-crf", "23",
+        "-c:a", "aac",
+        "-b:a", "128k",
+        "-movflags", "+faststart",
+        str(output_path),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"  ffmpeg altyazi hatasi: {result.stderr[-500:]}")
+        raise RuntimeError("Altyazi yakma basarisiz oldu.")
+
+
 def cut_vertical_video(
     input_path: Path,
     output_path: Path,
@@ -504,6 +650,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-transcript-chars", type=int, default=100_000)
     parser.add_argument("--cookies", type=Path, default=None)
     parser.add_argument("--num-clips", type=int, default=NUM_CANDIDATES)
+    parser.add_argument("--subtitle-style", default="bold", choices=["bold", "highlight", "minimal", "none"])
     return parser.parse_args()
 
 
@@ -611,14 +758,40 @@ def main() -> None:
 
         # Cut all candidates
         print("STEP:5/6 Klip adaylari kesiliyor...")
+        use_subs = args.subtitle_style != "none"
+
         for i, cand in enumerate(candidates):
             start, end = clamp_clip(cand, video_duration, args.clip_seconds)
             if i == 0:
                 out = output_path
             else:
                 out = output_path.parent / f"{output_path.stem}_aday{i+1}{output_path.suffix}"
+
             print(f"  Aday #{i+1} kesiliyor: {seconds_to_stamp(start)} - {seconds_to_stamp(end)}")
-            cut_vertical_video(input_path, out, start, end, args.target_height)
+
+            if use_subs:
+                # Cut without subs first, then burn subs
+                raw_out = out.parent / f"{out.stem}_nosub{out.suffix}"
+                cut_vertical_video(input_path, raw_out, start, end, args.target_height)
+
+                clip_words = words_for_clip(words, start, end)
+                phrases = group_words_into_phrases(clip_words, max_words=4)
+
+                if phrases:
+                    target_w = int(args.target_height * DEFAULT_ASPECT_RATIO)
+                    ass_content = generate_ass_subtitles(
+                        phrases, args.subtitle_style, target_w, args.target_height
+                    )
+                    ass_path = tmp_path / f"subs_{i}.ass"
+                    ass_path.write_text(ass_content, encoding="utf-8")
+
+                    print(f"  Aday #{i+1} altyazi yakilyor ({len(phrases)} grup)...")
+                    burn_subtitles(raw_out, ass_path, out)
+                    raw_out.unlink(missing_ok=True)
+                else:
+                    raw_out.rename(out)
+            else:
+                cut_vertical_video(input_path, out, start, end, args.target_height)
 
         print("STEP:6/6 Tamamlandi!")
         print(f"Bitti: {output_path}")

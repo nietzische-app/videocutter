@@ -177,6 +177,19 @@
       </div>
     </div>
 
+    <div class="row" style="grid-template-columns: 1fr 1fr;">
+      <div>
+        <label for="subtitleStyle">Altyazi Stili</label>
+        <select id="subtitleStyle">
+          <option value="bold" selected>Bold - Buyuk beyaz (onerilen)</option>
+          <option value="highlight">Highlight - Sari vurgulu</option>
+          <option value="minimal">Minimal - Kucuk alt kisim</option>
+          <option value="none">Altyazisiz</option>
+        </select>
+      </div>
+      <div></div>
+    </div>
+
     <button class="main-btn" id="startButton">Klipleri olustur</button>
 
     <div class="progress-container" id="progress">
@@ -404,7 +417,8 @@
       const payload = {
         video_input: videoInput,
         api_key: $("apiKey").value,
-        clip_seconds: Number($("clipSeconds").value || 30)
+        clip_seconds: Number($("clipSeconds").value || 30),
+        subtitle_style: $("subtitleStyle").value
       };
 
       try {
