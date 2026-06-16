@@ -67,6 +67,8 @@ def download_youtube_video(url: str, output_dir: Path, cookies_file: Path | None
         "outtmpl": output_template,
         "quiet": False,
         "noplaylist": True,
+        "extractor_args": {"youtube": {"js_runtimes": ["deno"]}},
+        "remote_components": {"ejs": "github"},
     }
 
     if cookies_file and cookies_file.exists():
