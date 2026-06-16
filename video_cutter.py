@@ -26,32 +26,34 @@ NUM_CANDIDATES = 3
 
 SUBTITLE_STYLES = {
     "bold": {
-        "fontname": "Arial",
-        "fontsize": 58,
+        "fontname": "Bangers",
+        "fontsize": 64,
         "primary_color": "&H00FFFFFF",  # white
         "outline_color": "&H00000000",  # black
         "back_color": "&H80000000",
-        "bold": 1,
-        "outline": 3,
+        "bold": 0,
+        "outline": 4,
         "shadow": 2,
         "alignment": 2,  # bottom center
         "margin_v": 120,
+        "verb_color": "&H005FFFED",  # vibrant cyan-green (BGR)
     },
     "highlight": {
-        "fontname": "Arial",
-        "fontsize": 62,
+        "fontname": "Bangers",
+        "fontsize": 68,
         "primary_color": "&H0000FFFF",  # yellow
         "outline_color": "&H00000000",
         "back_color": "&H80000000",
-        "bold": 1,
+        "bold": 0,
         "outline": 4,
         "shadow": 0,
         "alignment": 5,  # center
         "margin_v": 50,
+        "verb_color": "&H003CFFFF",  # hot orange (BGR)
     },
     "minimal": {
-        "fontname": "Arial",
-        "fontsize": 42,
+        "fontname": "Bangers",
+        "fontsize": 48,
         "primary_color": "&H00FFFFFF",
         "outline_color": "&H00000000",
         "back_color": "&H00000000",
@@ -60,8 +62,38 @@ SUBTITLE_STYLES = {
         "shadow": 1,
         "alignment": 2,
         "margin_v": 80,
+        "verb_color": "&H006464FF",  # warm red (BGR)
     },
 }
+
+_TURKISH_VERB_SUFFIXES = (
+    "yor", "iyor", "ıyor", "uyor", "üyor",
+    "dı", "di", "du", "dü", "tı", "ti", "tu", "tü",
+    "mış", "miş", "muş", "müş",
+    "cak", "cek", "acak", "ecek",
+    "malı", "meli",
+    "sin", "sın", "sun", "sün",
+    "lar", "ler",
+    "mak", "mek",
+    "yor", "ken",
+    "ıyorum", "iyorum", "uyorum", "üyorum",
+    "ıyorsun", "iyorsun", "uyorsun", "üyorsun",
+    "ıyoruz", "iyoruz", "uyoruz", "üyoruz",
+    "dım", "dim", "dum", "düm",
+    "dın", "din", "dun", "dün",
+    "tım", "tim", "tum", "tüm",
+    "tın", "tin", "tun", "tün",
+    "mıştı", "mişti", "muştu", "müştü",
+    "se", "sa",
+    "abil", "ebil",
+)
+
+
+def is_turkish_verb(word: str) -> bool:
+    w = word.lower().rstrip(".,!?;:'\"")
+    if len(w) < 3:
+        return False
+    return any(w.endswith(s) for s in _TURKISH_VERB_SUFFIXES)
 
 
 def is_url(value: str) -> bool:
@@ -579,21 +611,36 @@ Style: Default,{style['fontname']},{style['fontsize']},{style['primary_color']},
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
 
+    verb_color = style.get("verb_color", "&H0000FFFF")
+    primary = style["primary_color"]
+
     events = []
     for phrase in phrases:
         start_ts = _ass_timestamp(phrase["start"])
         end_ts = _ass_timestamp(phrase["end"])
-        text = phrase["text"].replace("\n", "\\N").upper()
+        words = phrase["text"].split()
+        colored_parts = []
+        for word in words:
+            upper_word = word.upper()
+            if is_turkish_verb(word):
+                colored_parts.append(f"{{\\c{verb_color}}}{upper_word}{{\\c{primary}}}")
+            else:
+                colored_parts.append(upper_word)
+        text = " ".join(colored_parts).replace("\n", "\\N")
         events.append(f"Dialogue: 0,{start_ts},{end_ts},Default,,0,0,0,,{text}")
 
     return header + "\n".join(events) + "\n"
 
 
 def burn_subtitles(input_video: Path, ass_path: Path, output_path: Path) -> None:
+    fonts_dir = Path(__file__).resolve().parent / "fonts"
+    ass_filter = f"ass={str(ass_path)}"
+    if fonts_dir.exists():
+        ass_filter += f":fontsdir={str(fonts_dir)}"
     cmd = [
         "ffmpeg", "-y",
         "-i", str(input_video),
-        "-vf", f"ass={str(ass_path)}",
+        "-vf", ass_filter,
         "-c:v", "libx264",
         "-preset", "medium",
         "-crf", "23",

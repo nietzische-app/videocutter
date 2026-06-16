@@ -13,7 +13,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
-RUN mkdir -p /app/outputs
+RUN mkdir -p /app/outputs /usr/local/share/fonts \
+    && cp /app/fonts/*.ttf /usr/local/share/fonts/ 2>/dev/null || true \
+    && fc-cache -f 2>/dev/null || true
 
 EXPOSE 7860
 
