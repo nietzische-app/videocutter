@@ -49,7 +49,7 @@
       color: #374151;
     }
 
-    input {
+    input, select {
       width: 100%;
       box-sizing: border-box;
       border: 1px solid #d1d5db;
@@ -61,7 +61,7 @@
       transition: border-color 0.2s;
     }
 
-    input:focus {
+    input:focus, select:focus {
       outline: none;
       border-color: #1967d2;
       box-shadow: 0 0 0 3px rgba(25, 103, 210, 0.12);
@@ -73,7 +73,111 @@
       gap: 14px;
     }
 
-    button {
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: 0;
+      margin-top: 16px;
+      border-bottom: 2px solid #e2e8f0;
+    }
+
+    .tab {
+      padding: 10px 20px;
+      font-size: 14px;
+      font-weight: 700;
+      color: #64748b;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      transition: all 0.2s;
+      background: none;
+      border-top: 0;
+      border-left: 0;
+      border-right: 0;
+      width: auto;
+    }
+
+    .tab:hover { color: #1967d2; }
+
+    .tab.active {
+      color: #1967d2;
+      border-bottom-color: #1967d2;
+    }
+
+    .tab-panel {
+      display: none;
+      padding-top: 12px;
+    }
+
+    .tab-panel.active { display: block; }
+
+    /* Drop zone */
+    .drop-zone {
+      border: 2px dashed #d1d5db;
+      border-radius: 10px;
+      padding: 32px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: #f8fafc;
+    }
+
+    .drop-zone:hover, .drop-zone.dragover {
+      border-color: #1967d2;
+      background: #eff6ff;
+    }
+
+    .drop-zone-icon {
+      font-size: 36px;
+      margin-bottom: 8px;
+      display: block;
+    }
+
+    .drop-zone-text {
+      font-size: 14px;
+      color: #475569;
+    }
+
+    .drop-zone-hint {
+      font-size: 12px;
+      color: #94a3b8;
+      margin-top: 4px;
+    }
+
+    .file-selected {
+      margin-top: 8px;
+      font-size: 13px;
+      color: #16a34a;
+      font-weight: 600;
+    }
+
+    .upload-progress {
+      display: none;
+      margin-top: 10px;
+    }
+
+    .upload-bar {
+      height: 6px;
+      background: #e2e8f0;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .upload-bar-fill {
+      height: 100%;
+      background: #1967d2;
+      border-radius: 3px;
+      width: 0%;
+      transition: width 0.3s;
+    }
+
+    .upload-text {
+      font-size: 12px;
+      color: #64748b;
+      margin-top: 4px;
+    }
+
+    button.main-btn {
       margin-top: 22px;
       width: 100%;
       border: 0;
@@ -88,11 +192,11 @@
       transition: background 0.2s;
     }
 
-    button:hover:not(:disabled) {
+    button.main-btn:hover:not(:disabled) {
       background: #1557b0;
     }
 
-    button:disabled {
+    button.main-btn:disabled {
       background: #94a3b8;
       cursor: wait;
     }
@@ -276,16 +380,38 @@
       .dot { width: 24px; height: 24px; font-size: 11px; }
       .step-label { font-size: 10px; }
       .result-section video { max-height: 60vh; }
+      .drop-zone { padding: 20px 14px; }
     }
   </style>
 </head>
 <body>
   <main>
     <h1>Video Kesici</h1>
-    <p class="subtitle">YouTube linki veya video dosyasi girin, yapay zeka en iyi ani secip dikey klip uretsin.</p>
+    <p class="subtitle">Video yukleyin veya YouTube linki girin, yapay zeka en iyi ani secip dikey klip uretsin.</p>
 
-    <label for="videoInput">YouTube linki veya video yolu</label>
-    <input id="videoInput" placeholder="https://www.youtube.com/watch?v=..." autocomplete="off">
+    <div class="tabs">
+      <button class="tab active" data-tab="upload">Dosya Yukle</button>
+      <button class="tab" data-tab="youtube">YouTube Linki</button>
+    </div>
+
+    <div class="tab-panel active" id="panel-upload">
+      <div class="drop-zone" id="dropZone">
+        <span class="drop-zone-icon">&#128193;</span>
+        <div class="drop-zone-text">Videoyu surukle birak veya tiklayip sec</div>
+        <div class="drop-zone-hint">MP4, MKV, AVI, MOV, WEBM - Maks 2 GB</div>
+      </div>
+      <input type="file" id="fileInput" accept=".mp4,.mkv,.avi,.mov,.webm,.m4v,.flv,.wmv" style="display:none">
+      <div class="file-selected" id="fileSelected"></div>
+      <div class="upload-progress" id="uploadProgress">
+        <div class="upload-bar"><div class="upload-bar-fill" id="uploadBarFill"></div></div>
+        <div class="upload-text" id="uploadText">Yukleniyor...</div>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="panel-youtube">
+      <label for="videoInput">YouTube linki</label>
+      <input id="videoInput" placeholder="https://www.youtube.com/watch?v=..." autocomplete="off">
+    </div>
 
     <div class="row">
       <div>
@@ -298,7 +424,7 @@
       </div>
     </div>
 
-    <button id="startButton">Klibi olustur</button>
+    <button class="main-btn" id="startButton">Klibi olustur</button>
 
     <div class="progress-container" id="progress">
       <div class="steps">
@@ -350,6 +476,115 @@
     const stepMessage = document.getElementById("stepMessage");
     const toggleLog = document.getElementById("toggleLog");
     const videoPreview = document.getElementById("videoPreview");
+    const dropZone = document.getElementById("dropZone");
+    const fileInput = document.getElementById("fileInput");
+    const fileSelected = document.getElementById("fileSelected");
+    const uploadProgress = document.getElementById("uploadProgress");
+    const uploadBarFill = document.getElementById("uploadBarFill");
+    const uploadText = document.getElementById("uploadText");
+
+    let uploadedFilePath = null;
+    let activeTab = "upload";
+
+    // Tab switching
+    document.querySelectorAll(".tab").forEach(tab => {
+      tab.addEventListener("click", () => {
+        document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+        document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+        tab.classList.add("active");
+        const panel = document.getElementById("panel-" + tab.dataset.tab);
+        panel.classList.add("active");
+        activeTab = tab.dataset.tab;
+      });
+    });
+
+    // Drop zone
+    dropZone.addEventListener("click", () => fileInput.click());
+
+    dropZone.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      dropZone.classList.add("dragover");
+    });
+
+    dropZone.addEventListener("dragleave", () => {
+      dropZone.classList.remove("dragover");
+    });
+
+    dropZone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dropZone.classList.remove("dragover");
+      if (e.dataTransfer.files.length > 0) {
+        handleFile(e.dataTransfer.files[0]);
+      }
+    });
+
+    fileInput.addEventListener("change", () => {
+      if (fileInput.files.length > 0) {
+        handleFile(fileInput.files[0]);
+      }
+    });
+
+    function handleFile(file) {
+      const ext = file.name.split(".").pop().toLowerCase();
+      const allowed = ["mp4", "mkv", "avi", "mov", "webm", "m4v", "flv", "wmv"];
+      if (!allowed.includes(ext)) {
+        errorBox.textContent = "Desteklenmeyen dosya formati. MP4, MKV, AVI, MOV, WEBM desteklenir.";
+        errorBox.style.display = "block";
+        return;
+      }
+      if (file.size > 2 * 1024 * 1024 * 1024) {
+        errorBox.textContent = "Dosya boyutu 2 GB'dan buyuk olamaz.";
+        errorBox.style.display = "block";
+        return;
+      }
+
+      errorBox.style.display = "none";
+      fileSelected.textContent = file.name + " (" + (file.size / 1024 / 1024).toFixed(1) + " MB)";
+      uploadedFilePath = null;
+
+      // Upload
+      uploadProgress.style.display = "block";
+      uploadBarFill.style.width = "0%";
+      uploadText.textContent = "Yukleniyor...";
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/upload");
+
+      xhr.upload.addEventListener("progress", (e) => {
+        if (e.lengthComputable) {
+          const pct = Math.round((e.loaded / e.total) * 100);
+          uploadBarFill.style.width = pct + "%";
+          uploadText.textContent = pct + "% yuklendi";
+        }
+      });
+
+      xhr.addEventListener("load", () => {
+        if (xhr.status === 200) {
+          const data = JSON.parse(xhr.responseText);
+          uploadedFilePath = data.path;
+          uploadBarFill.style.width = "100%";
+          uploadText.textContent = "Yukleme tamamlandi!";
+        } else {
+          const data = JSON.parse(xhr.responseText);
+          uploadProgress.style.display = "none";
+          fileSelected.textContent = "";
+          errorBox.textContent = data.error || "Yukleme basarisiz.";
+          errorBox.style.display = "block";
+        }
+      });
+
+      xhr.addEventListener("error", () => {
+        uploadProgress.style.display = "none";
+        fileSelected.textContent = "";
+        errorBox.textContent = "Baglanti hatasi. Tekrar deneyin.";
+        errorBox.style.display = "block";
+      });
+
+      xhr.send(formData);
+    }
 
     toggleLog.addEventListener("click", () => {
       const visible = logBox.style.display === "block";
@@ -435,11 +670,22 @@
     }
 
     startButton.addEventListener("click", async () => {
-      const videoInput = document.getElementById("videoInput").value.trim();
-      if (!videoInput) {
-        errorBox.textContent = "Lutfen bir YouTube linki veya video yolu girin.";
-        errorBox.style.display = "block";
-        return;
+      let videoInput;
+
+      if (activeTab === "upload") {
+        if (!uploadedFilePath) {
+          errorBox.textContent = "Lutfen once bir video dosyasi yukleyin.";
+          errorBox.style.display = "block";
+          return;
+        }
+        videoInput = uploadedFilePath;
+      } else {
+        videoInput = document.getElementById("videoInput").value.trim();
+        if (!videoInput) {
+          errorBox.textContent = "Lutfen bir YouTube linki girin.";
+          errorBox.style.display = "block";
+          return;
+        }
       }
 
       startButton.disabled = true;

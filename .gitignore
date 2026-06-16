@@ -4,6 +4,7 @@ cookies.txt
 __pycache__/
 *.pyc
 outputs/
+uploads/
 work/
 *.mp4
 *.mp3

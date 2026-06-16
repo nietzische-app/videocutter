@@ -13,16 +13,19 @@ from flask import Flask, jsonify, render_template, request, send_file
 
 PROJECT_DIR = Path(__file__).resolve().parent
 OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", PROJECT_DIR / "outputs")).resolve()
+UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", PROJECT_DIR / "uploads")).resolve()
 JOBS: dict[str, dict] = {}
 
 MAX_JOBS_PER_IP = 5
 RATE_WINDOW = 3600
 CLEANUP_MAX_AGE = 3600
+MAX_UPLOAD_SIZE = 2 * 1024 * 1024 * 1024  # 2 GB
 
 _rate_limit: dict[str, list[float]] = defaultdict(list)
 _SAFE_JOB_ID_RE = re.compile(r"^[a-f0-9]{12}$")
 
 app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_SIZE
 
 
 def set_job(job_id: str, **updates) -> None:
@@ -64,6 +67,12 @@ def cleanup_loop() -> None:
             if output:
                 try:
                     Path(output).unlink(missing_ok=True)
+                except Exception:
+                    pass
+            upload = job.get("upload_path")
+            if upload:
+                try:
+                    Path(upload).unlink(missing_ok=True)
                 except Exception:
                     pass
 
@@ -135,6 +144,27 @@ def index():
     return render_template("index.html")
 
 
+@app.post("/api/upload")
+def upload_video():
+    if "file" not in request.files:
+        return jsonify({"error": "Dosya bulunamadi."}), 400
+
+    file = request.files["file"]
+    if not file.filename:
+        return jsonify({"error": "Dosya adi bos."}), 400
+
+    ext = Path(file.filename).suffix.lower()
+    if ext not in (".mp4", ".mkv", ".avi", ".mov", ".webm", ".m4v", ".flv", ".wmv"):
+        return jsonify({"error": "Desteklenmeyen dosya formati. MP4, MKV, AVI, MOV, WEBM desteklenir."}), 400
+
+    file_id = uuid.uuid4().hex[:12]
+    safe_name = f"upload_{file_id}{ext}"
+    save_path = UPLOAD_DIR / safe_name
+    file.save(str(save_path))
+
+    return jsonify({"path": str(save_path), "filename": file.filename})
+
+
 @app.post("/api/jobs")
 def create_job():
     payload = request.get_json(force=True)
@@ -143,7 +173,7 @@ def create_job():
     clip_seconds = float(payload.get("clip_seconds") or 30)
 
     if not video_input:
-        return jsonify({"error": "YouTube linki veya video yolu gerekli."}), 400
+        return jsonify({"error": "Video yukleyin veya YouTube linki girin."}), 400
     if not is_safe_video_input(video_input):
         return jsonify({"error": "Gecersiz video girisi."}), 400
     if not api_key or api_key == "sk-...":
@@ -156,7 +186,8 @@ def create_job():
         return jsonify({"error": "Cok fazla istek. Lutfen bir saat bekleyin."}), 429
 
     job_id = uuid.uuid4().hex[:12]
-    set_job(job_id, status="queued", message="Sira alindi.", created_at=time.time())
+    upload_path = video_input if video_input.startswith(str(UPLOAD_DIR)) else None
+    set_job(job_id, status="queued", message="Sira alindi.", created_at=time.time(), upload_path=upload_path)
 
     thread = threading.Thread(
         target=run_video_job,
@@ -182,6 +213,7 @@ def get_job(job_id: str):
         return jsonify({"error": "Is bulunamadi."}), 404
 
     response = dict(job)
+    response.pop("upload_path", None)
     if response.get("output"):
         response["download_url"] = f"/download/{job_id}"
         response["preview_url"] = f"/preview/{job_id}"
@@ -212,6 +244,7 @@ def preview(job_id: str):
 
 if __name__ == "__main__":
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     threading.Thread(target=cleanup_loop, daemon=True).start()
     host = os.getenv("HOST", "127.0.0.1")
     port = int(os.getenv("PORT", "7860"))
