@@ -52,7 +52,7 @@ def extract_audio(video_path: Path, audio_path: Path) -> None:
         )
 
 
-def download_youtube_video(url: str, output_dir: Path) -> Path:
+def download_youtube_video(url: str, output_dir: Path, cookies_file: Path | None = None) -> Path:
     try:
         from yt_dlp import YoutubeDL
     except ImportError as exc:
@@ -68,6 +68,9 @@ def download_youtube_video(url: str, output_dir: Path) -> Path:
         "quiet": False,
         "noplaylist": True,
     }
+
+    if cookies_file and cookies_file.exists():
+        options["cookiefile"] = str(cookies_file)
 
     with YoutubeDL(options) as ydl:
         info = ydl.extract_info(url, download=True)
@@ -338,6 +341,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--gpt-model", default="gpt-4.1-mini")
     parser.add_argument("--target-height", type=int, default=1920)
     parser.add_argument("--max-transcript-chars", type=int, default=100_000)
+    parser.add_argument("--cookies", type=Path, default=None, help="YouTube cookie dosyasi (Netscape format)")
     return parser.parse_args()
 
 
@@ -357,7 +361,8 @@ def main() -> None:
             if not is_youtube_url(args.input):
                 raise ValueError("Su an yalnizca YouTube linkleri destekleniyor.")
             print("STEP:1/5 YouTube videosu indiriliyor...")
-            input_path = download_youtube_video(args.input, tmp_path)
+            cookies_file = args.cookies or Path(__file__).resolve().parent / "cookies.txt"
+            input_path = download_youtube_video(args.input, tmp_path, cookies_file=cookies_file)
         else:
             input_path = Path(args.input).resolve()
             if not input_path.exists():
