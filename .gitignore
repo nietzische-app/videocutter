@@ -11,3 +11,6 @@ work/
 *.m4a
 *.webm
 *.mov
+trend_history.json
+schedule_log.json
+schedule_config.json

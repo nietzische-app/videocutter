@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Trend Kesif - Video Kesici</title>
+  <style>
+    :root { color-scheme:light; font-family:Inter,Segoe UI,Arial,sans-serif; background:#f5f7fb; color:#172033; }
+    body { margin:0; min-height:100vh; padding:28px; }
+    .container { max-width:1100px; margin:0 auto; }
+
+    .nav { display:flex; gap:12px; margin-bottom:24px; align-items:center; }
+    .nav a { text-decoration:none; padding:8px 16px; border-radius:8px; font-weight:700; font-size:14px; color:#475569; transition:all .2s; }
+    .nav a:hover { background:#e2e8f0; }
+    .nav a.active { background:#1967d2; color:#fff; }
+
+    .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+    @media(max-width:768px) { .grid-2 { grid-template-columns:1fr; } }
+
+    .card {
+      background:#fff; border:1px solid #d9e1ef; border-radius:12px;
+      box-shadow:0 6px 24px rgba(24,39,75,.08); padding:24px;
+    }
+    .card h2 { margin:0 0 16px; font-size:20px; }
+    .card h3 { margin:0 0 12px; font-size:16px; color:#374151; }
+
+    label { display:block; margin:12px 0 4px; font-weight:700; font-size:13px; color:#374151; }
+    input, select {
+      width:100%; box-sizing:border-box; border:1px solid #d1d5db; border-radius:8px;
+      padding:10px 12px; font:inherit; font-size:14px; background:#fff; transition:border-color .2s;
+    }
+    input:focus, select:focus { outline:none; border-color:#1967d2; box-shadow:0 0 0 3px rgba(25,103,210,.12); }
+
+    .row-inline { display:flex; gap:10px; align-items:end; }
+    .row-inline > div { flex:1; }
+
+    .btn {
+      border:0; border-radius:8px; padding:10px 18px; font:inherit; font-size:14px;
+      font-weight:700; cursor:pointer; transition:all .2s;
+    }
+    .btn-primary { background:#1967d2; color:#fff; }
+    .btn-primary:hover:not(:disabled) { background:#1557b0; }
+    .btn-primary:disabled { background:#94a3b8; cursor:wait; }
+    .btn-success { background:#16a34a; color:#fff; }
+    .btn-success:hover:not(:disabled) { background:#15803d; }
+    .btn-danger { background:#dc2626; color:#fff; }
+    .btn-danger:hover { background:#b91c1c; }
+    .btn-outline { background:#fff; color:#475569; border:1px solid #d1d5db; }
+    .btn-outline:hover { background:#f1f5f9; }
+    .btn-sm { padding:6px 12px; font-size:12px; }
+    .btn-block { width:100%; margin-top:14px; }
+
+    .tag { display:inline-block; padding:3px 8px; border-radius:5px; font-size:11px; font-weight:700; }
+    .tag-blue { background:#eff6ff; color:#1967d2; }
+    .tag-green { background:#f0fdf4; color:#16a34a; }
+    .tag-red { background:#fef2f2; color:#dc2626; }
+    .tag-orange { background:#fffbeb; color:#d97706; }
+
+    .status-dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; }
+    .status-dot.on { background:#16a34a; animation:pulse 1.5s infinite; }
+    .status-dot.off { background:#94a3b8; }
+    @keyframes pulse { 0%,100%{opacity:1}50%{opacity:.4} }
+
+    /* Video grid */
+    .video-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:14px; margin-top:16px; }
+    .video-card {
+      border:1px solid #e2e8f0; border-radius:10px; overflow:hidden; background:#fff;
+      transition:all .2s; cursor:pointer;
+    }
+    .video-card:hover { border-color:#1967d2; box-shadow:0 4px 16px rgba(25,103,210,.12); }
+    .video-card.selected { border-color:#16a34a; border-width:2px; }
+    .video-thumb { width:100%; aspect-ratio:16/9; object-fit:cover; display:block; background:#0f172a; }
+    .video-info { padding:10px 12px; }
+    .video-title { font-size:13px; font-weight:700; color:#1e293b; line-height:1.4; margin:0 0 4px;
+      display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+    .video-meta { font-size:12px; color:#64748b; display:flex; gap:10px; flex-wrap:wrap; }
+    .video-meta span { white-space:nowrap; }
+    .video-actions { padding:8px 12px; border-top:1px solid #f1f5f9; display:flex; gap:8px; }
+
+    /* Log */
+    .log-list { max-height:300px; overflow-y:auto; font-size:12px; }
+    .log-entry { padding:8px 10px; border-bottom:1px solid #f1f5f9; }
+    .log-entry:last-child { border-bottom:0; }
+    .log-time { color:#94a3b8; font-size:11px; }
+    .log-title { font-weight:600; color:#1e293b; margin:2px 0; }
+
+    .empty { text-align:center; padding:40px 20px; color:#94a3b8; font-size:14px; }
+
+    .niche-chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+    .niche-chip {
+      padding:6px 12px; border-radius:20px; font-size:12px; font-weight:600;
+      border:1px solid #d1d5db; background:#fff; cursor:pointer; transition:all .2s;
+    }
+    .niche-chip:hover { border-color:#1967d2; }
+    .niche-chip.active { background:#1967d2; color:#fff; border-color:#1967d2; }
+
+    .switch { position:relative; display:inline-block; width:44px; height:24px; }
+    .switch input { opacity:0; width:0; height:0; }
+    .slider { position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background:#cbd5e1; border-radius:24px; transition:.3s; }
+    .slider:before { content:""; position:absolute; height:18px; width:18px; left:3px; bottom:3px; background:#fff; border-radius:50%; transition:.3s; }
+    .switch input:checked+.slider { background:#16a34a; }
+    .switch input:checked+.slider:before { transform:translateX(20px); }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="nav">
+    <a href="/">Video Kesici</a>
+    <a href="/trends" class="active">Trend Kesif</a>
+  </div>
+
+  <div class="grid-2">
+    <!-- Left: Discovery Panel -->
+    <div>
+      <div class="card">
+        <h2>Trend Videolar</h2>
+        <p style="font-size:13px;color:#64748b;margin:0 0 16px;">YouTube'dan trending/populer videolari kesfet ve otomatik kliple.</p>
+
+        <label>YouTube Data API Key</label>
+        <input id="ytApiKey" type="password" placeholder="AIza...">
+        <small style="color:#94a3b8;font-size:11px;">Google Cloud Console'dan alinir (ucretsiz 10K kota/gun)</small>
+
+        <label>Nis Sec</label>
+        <div class="niche-chips" id="nicheChips"></div>
+
+        <div class="row-inline" style="margin-top:14px;">
+          <div>
+            <label>Bolge</label>
+            <select id="regionSelect">
+              <option value="TR" selected>Turkiye</option>
+              <option value="US">ABD</option>
+              <option value="GB">Ingiltere</option>
+              <option value="DE">Almanya</option>
+              <option value="FR">Fransa</option>
+              <option value="JP">Japonya</option>
+              <option value="KR">Guney Kore</option>
+              <option value="BR">Brezilya</option>
+            </select>
+          </div>
+          <div>
+            <label>Min. Goruntulenme</label>
+            <input id="minViews" type="number" value="50000" min="0" step="10000">
+          </div>
+        </div>
+
+        <button class="btn btn-primary btn-block" id="discoverBtn">Trendleri Tara</button>
+      </div>
+
+      <div class="card" style="margin-top:20px;">
+        <div id="videoResults">
+          <div class="empty">Henuz tarama yapilmadi. Yukardaki butona tiklayarak trendleri kesfet.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Scheduler + Log -->
+    <div>
+      <div class="card">
+        <h2>Otomasyon</h2>
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+          <span class="status-dot off" id="schedulerDot"></span>
+          <span id="schedulerStatus" style="font-size:14px;font-weight:700;color:#64748b;">Kapali</span>
+          <div style="flex:1;"></div>
+          <button class="btn btn-success btn-sm" id="schedulerToggle">Baslat</button>
+          <button class="btn btn-outline btn-sm" id="runNowBtn">Simdi Tara</button>
+        </div>
+
+        <div class="row-inline">
+          <div>
+            <label>Tarama Araligi</label>
+            <select id="intervalSelect">
+              <option value="60">Her 1 saat</option>
+              <option value="180">Her 3 saat</option>
+              <option value="360" selected>Her 6 saat</option>
+              <option value="720">Her 12 saat</option>
+              <option value="1440">Gunde 1</option>
+            </select>
+          </div>
+          <div>
+            <label>Klip/Tarama</label>
+            <input id="clipsPerRun" type="number" value="3" min="1" max="10">
+          </div>
+        </div>
+
+        <div class="row-inline" style="margin-top:8px;">
+          <div>
+            <label>Klip Suresi (sn)</label>
+            <input id="schedClipSec" type="number" value="30" min="5" max="180">
+          </div>
+          <div>
+            <label>Altyazi Stili</label>
+            <select id="schedSubStyle">
+              <option value="bold" selected>Eglenceli</option>
+              <option value="highlight">Parlak</option>
+              <option value="minimal">Sade</option>
+              <option value="none">Yok</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:16px;margin-top:14px;">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:0;">
+            <input type="checkbox" id="schedTemplate" checked style="width:16px;height:16px;accent-color:#1967d2;">
+            <span style="font-size:13px;">Sablon Modu</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:0;">
+            <input type="checkbox" id="schedAutoCaption" checked style="width:16px;height:16px;accent-color:#1967d2;">
+            <span style="font-size:13px;">Oto-Caption</span>
+          </label>
+        </div>
+
+        <button class="btn btn-primary btn-block" id="saveConfigBtn">Ayarlari Kaydet</button>
+      </div>
+
+      <div class="card" style="margin-top:20px;">
+        <h3>Islem Gecmisi</h3>
+        <div class="log-list" id="logList">
+          <div class="empty">Henuz islem yok.</div>
+        </div>
+        <button class="btn btn-outline btn-sm" style="margin-top:10px;" id="refreshLogBtn">Yenile</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const $ = id => document.getElementById(id);
+  let selectedNiche = "eglence";
+  let discoveredVideos = [];
+
+  function formatViews(n) {
+    if (n >= 1_000_000) return (n/1_000_000).toFixed(1) + "M";
+    if (n >= 1_000) return (n/1_000).toFixed(1) + "K";
+    return String(n);
+  }
+
+  async function loadNiches() {
+    try {
+      const res = await fetch("/api/trends/niches");
+      const data = await res.json();
+      const container = $("nicheChips");
+      container.innerHTML = "";
+      for (const [key, info] of Object.entries(data)) {
+        const chip = document.createElement("button");
+        chip.className = "niche-chip" + (key === selectedNiche ? " active" : "");
+        chip.textContent = key.charAt(0).toUpperCase() + key.slice(1);
+        chip.onclick = () => {
+          selectedNiche = key;
+          container.querySelectorAll(".niche-chip").forEach(c => c.classList.remove("active"));
+          chip.classList.add("active");
+        };
+        container.appendChild(chip);
+      }
+    } catch(e) { console.error(e); }
+  }
+
+  async function discover() {
+    const btn = $("discoverBtn");
+    const ytKey = $("ytApiKey").value.trim();
+    if (!ytKey) { alert("YouTube API Key gerekli."); return; }
+
+    btn.disabled = true;
+    btn.textContent = "Taraniyor...";
+
+    try {
+      const res = await fetch("/api/trends/discover", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          youtube_api_key: ytKey,
+          niche: selectedNiche,
+          region: $("regionSelect").value,
+          max_results: 12,
+          min_views: Number($("minViews").value || 50000),
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) { alert(data.error || "Hata olustu."); return; }
+
+      discoveredVideos = data.videos || [];
+      renderVideos();
+    } catch(e) {
+      alert("Baglanti hatasi: " + e.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Trendleri Tara";
+    }
+  }
+
+  function renderVideos() {
+    const container = $("videoResults");
+    if (!discoveredVideos.length) {
+      container.innerHTML = '<div class="empty">Video bulunamadi. Farkli bir nis veya bolge deneyin.</div>';
+      return;
+    }
+
+    container.innerHTML = '<div class="video-grid">' + discoveredVideos.map((v, i) => `
+      <div class="video-card" data-idx="${i}">
+        <img class="video-thumb" src="${v.thumbnail}" alt="" loading="lazy">
+        <div class="video-info">
+          <div class="video-title">${esc(v.title)}</div>
+          <div class="video-meta">
+            <span>${esc(v.channel)}</span>
+            <span>${formatViews(v.view_count)} izlenme</span>
+          </div>
+        </div>
+        <div class="video-actions">
+          <button class="btn btn-primary btn-sm" onclick="processVideo(${i})" style="flex:1;">Kliple</button>
+          <a href="${v.url}" target="_blank" class="btn btn-outline btn-sm" style="flex:1;text-align:center;text-decoration:none;">Izle</a>
+        </div>
+      </div>
+    `).join("") + '</div>';
+  }
+
+  function esc(s) {
+    const d = document.createElement("div");
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  async function processVideo(idx) {
+    const v = discoveredVideos[idx];
+    if (!v) return;
+
+    const apiKey = prompt("OpenAI API Key (bos birakirsan .env'deki kullanilir):", "");
+
+    try {
+      const res = await fetch("/api/trends/process", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          url: v.url,
+          caption: v.title,
+          api_key: apiKey || "",
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) { alert(data.error || "Hata"); return; }
+
+      alert("Klipleme basladi! Job ID: " + data.job_id + "\nAna sayfadan takip edebilirsin.");
+    } catch(e) {
+      alert("Hata: " + e.message);
+    }
+  }
+
+  // Scheduler
+  async function loadSchedulerState() {
+    try {
+      const res = await fetch("/api/scheduler/config");
+      const cfg = await res.json();
+
+      const running = cfg.running;
+      $("schedulerDot").className = "status-dot " + (running ? "on" : "off");
+      $("schedulerStatus").textContent = running ? "Calisiyor" : "Kapali";
+      $("schedulerStatus").style.color = running ? "#16a34a" : "#64748b";
+      $("schedulerToggle").textContent = running ? "Durdur" : "Baslat";
+      $("schedulerToggle").className = "btn btn-sm " + (running ? "btn-danger" : "btn-success");
+
+      $("intervalSelect").value = String(cfg.interval_minutes || 360);
+      $("clipsPerRun").value = cfg.clips_per_run || 3;
+      $("schedClipSec").value = cfg.clip_seconds || 30;
+      $("schedSubStyle").value = cfg.subtitle_style || "bold";
+      $("schedTemplate").checked = cfg.use_template !== false;
+      $("schedAutoCaption").checked = cfg.auto_caption !== false;
+
+      if (cfg.niches && cfg.niches[0]) {
+        selectedNiche = cfg.niches[0];
+        document.querySelectorAll(".niche-chip").forEach(c => {
+          c.classList.toggle("active", c.textContent.toLowerCase() === selectedNiche);
+        });
+      }
+    } catch(e) { console.error(e); }
+  }
+
+  async function toggleScheduler() {
+    const dot = $("schedulerDot");
+    const isOn = dot.classList.contains("on");
+    const endpoint = isOn ? "/api/scheduler/stop" : "/api/scheduler/start";
+
+    try {
+      await fetch(endpoint, {method:"POST"});
+      await loadSchedulerState();
+    } catch(e) { alert("Hata: " + e.message); }
+  }
+
+  async function saveConfig() {
+    try {
+      const res = await fetch("/api/scheduler/config", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          niches: [selectedNiche],
+          region: $("regionSelect").value,
+          interval_minutes: Number($("intervalSelect").value),
+          clips_per_run: Number($("clipsPerRun").value),
+          clip_seconds: Number($("schedClipSec").value),
+          subtitle_style: $("schedSubStyle").value,
+          use_template: $("schedTemplate").checked,
+          auto_caption: $("schedAutoCaption").checked,
+          min_views: Number($("minViews").value || 50000),
+        })
+      });
+      if (res.ok) {
+        $("saveConfigBtn").textContent = "Kaydedildi!";
+        setTimeout(() => $("saveConfigBtn").textContent = "Ayarlari Kaydet", 2000);
+      }
+    } catch(e) { alert("Hata: " + e.message); }
+  }
+
+  async function runNow() {
+    const btn = $("runNowBtn");
+    btn.disabled = true;
+    btn.textContent = "Calisiyor...";
+    try {
+      const res = await fetch("/api/scheduler/run-now", {method:"POST"});
+      const data = await res.json();
+      if (!res.ok) { alert(data.error || "Hata"); return; }
+      alert(data.count + " video islendi. Loglardan detay gorebilirsin.");
+      loadLog();
+    } catch(e) {
+      alert("Hata: " + e.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Simdi Tara";
+    }
+  }
+
+  async function loadLog() {
+    try {
+      const res = await fetch("/api/scheduler/log");
+      const log = await res.json();
+      const container = $("logList");
+
+      if (!log.length) {
+        container.innerHTML = '<div class="empty">Henuz islem yok.</div>';
+        return;
+      }
+
+      container.innerHTML = log.reverse().map(entry => {
+        let statusTag = "";
+        if (entry.status === "done") statusTag = '<span class="tag tag-green">Basarili</span>';
+        else if (entry.status === "failed") statusTag = '<span class="tag tag-red">Basarisiz</span>';
+        else if (entry.status === "timeout") statusTag = '<span class="tag tag-orange">Zaman Asimi</span>';
+        else if (entry.type === "error") statusTag = '<span class="tag tag-red">Hata</span>';
+
+        return `<div class="log-entry">
+          <div class="log-time">${entry.time || ""} ${statusTag}</div>
+          <div class="log-title">${esc(entry.title || entry.error || "")}</div>
+          ${entry.channel ? '<div style="font-size:11px;color:#94a3b8;">' + esc(entry.channel) + ' | ' + formatViews(entry.views || 0) + ' izlenme</div>' : ""}
+        </div>`;
+      }).join("");
+    } catch(e) { console.error(e); }
+  }
+
+  // Init
+  $("discoverBtn").addEventListener("click", discover);
+  $("schedulerToggle").addEventListener("click", toggleScheduler);
+  $("saveConfigBtn").addEventListener("click", saveConfig);
+  $("runNowBtn").addEventListener("click", runNow);
+  $("refreshLogBtn").addEventListener("click", loadLog);
+
+  loadNiches();
+  loadSchedulerState();
+  loadLog();
+</script>
+</body>
+</html>

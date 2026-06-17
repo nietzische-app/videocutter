@@ -11,6 +11,13 @@ from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request, send_file
 
+from trend_discovery import discover_niche_videos, get_available_niches, mark_processed
+from scheduler import (
+    load_config, save_config, run_single_discovery,
+    start_scheduler, stop_scheduler, is_scheduler_running,
+    _load_log,
+)
+
 
 PROJECT_DIR = Path(__file__).resolve().parent
 OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", PROJECT_DIR / "outputs")).resolve()
@@ -309,10 +316,140 @@ def preview(job_id: str, clip_index: int):
     return send_file(path, mimetype="video/mp4", conditional=True)
 
 
+# ── Trend Discovery & Scheduler API ──────────────────────────
+
+
+@app.get("/trends")
+def trends_page():
+    return render_template("trends.html")
+
+
+@app.get("/api/trends/niches")
+def api_niches():
+    return jsonify(get_available_niches())
+
+
+@app.post("/api/trends/discover")
+def api_discover():
+    payload = request.get_json(force=True)
+    youtube_key = str(payload.get("youtube_api_key", "")).strip() or os.getenv("YOUTUBE_API_KEY", "")
+    if not youtube_key:
+        return jsonify({"error": "YouTube Data API key gerekli."}), 400
+
+    niche = str(payload.get("niche", "eglence")).strip()
+    region = str(payload.get("region", "TR")).strip()[:2].upper()
+    max_results = min(int(payload.get("max_results", 10)), 25)
+    min_views = int(payload.get("min_views", 10000))
+
+    try:
+        videos = discover_niche_videos(
+            api_key=youtube_key,
+            niche=niche,
+            region_code=region,
+            max_results=max_results,
+            min_views=min_views,
+        )
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": f"API hatasi: {e}"}), 500
+
+    return jsonify({"videos": videos, "count": len(videos)})
+
+
+@app.post("/api/trends/process")
+def api_trend_process():
+    """Seçilen bir trend videoyu klipleme kuyruğuna al."""
+    payload = request.get_json(force=True)
+    video_url = str(payload.get("url", "")).strip()
+    caption = str(payload.get("caption", "")).strip()[:200]
+    api_key = str(payload.get("api_key", "")).strip() or os.getenv("OPENAI_API_KEY", "")
+
+    if not video_url:
+        return jsonify({"error": "Video URL gerekli."}), 400
+    if not api_key:
+        return jsonify({"error": "OpenAI API key gerekli."}), 400
+
+    config = load_config()
+    job_id = uuid.uuid4().hex[:12]
+    set_job(job_id, status="queued", message="Trend video sira alindi.", created_at=time.time())
+
+    thread = threading.Thread(
+        target=run_video_job,
+        args=(job_id, video_url, api_key, config.get("clip_seconds", 30),
+              config.get("subtitle_style", "bold"), config.get("use_template", True), caption),
+        daemon=True,
+    )
+    thread.start()
+
+    return jsonify({"job_id": job_id})
+
+
+@app.get("/api/scheduler/config")
+def api_scheduler_config():
+    config = load_config()
+    config["running"] = is_scheduler_running()
+    return jsonify(config)
+
+
+@app.post("/api/scheduler/config")
+def api_scheduler_config_update():
+    payload = request.get_json(force=True)
+    config = load_config()
+    allowed_keys = {
+        "enabled", "niches", "region", "interval_minutes", "clips_per_run",
+        "clip_seconds", "min_views", "subtitle_style", "use_template", "auto_caption",
+    }
+    for k, v in payload.items():
+        if k in allowed_keys:
+            config[k] = v
+    save_config(config)
+    return jsonify(config)
+
+
+@app.post("/api/scheduler/start")
+def api_scheduler_start():
+    if start_scheduler():
+        return jsonify({"status": "started"})
+    return jsonify({"status": "already_running"})
+
+
+@app.post("/api/scheduler/stop")
+def api_scheduler_stop():
+    if stop_scheduler():
+        return jsonify({"status": "stopped"})
+    return jsonify({"status": "not_running"})
+
+
+@app.post("/api/scheduler/run-now")
+def api_scheduler_run_now():
+    """Manuel tetikleme — hemen bir tarama yap."""
+    config = load_config()
+    youtube_key = os.getenv("YOUTUBE_API_KEY", "")
+    if not youtube_key:
+        return jsonify({"error": "YOUTUBE_API_KEY environment variable gerekli."}), 400
+
+    try:
+        results = run_single_discovery(config)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    return jsonify({"results": results, "count": len(results)})
+
+
+@app.get("/api/scheduler/log")
+def api_scheduler_log():
+    log = _load_log()
+    return jsonify(log[-50:])
+
+
 if __name__ == "__main__":
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     threading.Thread(target=cleanup_loop, daemon=True).start()
+    config = load_config()
+    if config.get("enabled"):
+        start_scheduler()
     host = os.getenv("HOST", "127.0.0.1")
     port = int(os.getenv("PORT", "7860"))
     app.run(host=host, port=port, debug=False)
