@@ -20,7 +20,9 @@ from scheduler import (
 )
 from publisher import (
     load_publish_config, save_publish_config, publish_video,
-    get_publish_log,
+    get_publish_log, get_all_tokens, remove_token,
+    youtube_get_auth_url, youtube_exchange_code,
+    tiktok_get_auth_url, tiktok_exchange_code,
 )
 from channels import (
     load_channels, save_channels, add_channel, update_channel, remove_channel,
@@ -497,6 +499,7 @@ def api_publish_upload():
     video_path = str(payload.get("video_path", "")).strip()
     title = str(payload.get("title", "")).strip()[:200]
     platforms = payload.get("platforms", [])
+    account_id = str(payload.get("account_id", "")).strip() or None
 
     if not video_path or not Path(video_path).exists():
         return jsonify({"error": "Gecerli bir video dosyasi gerekli."}), 400
@@ -508,7 +511,7 @@ def api_publish_upload():
         return jsonify({"error": "Sadece outputs/ klasorundeki videolar yuklenebilir."}), 403
 
     try:
-        results = publish_video(str(resolved), title, platforms or None)
+        results = publish_video(str(resolved), title, platforms or None, account_id=account_id)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -518,6 +521,98 @@ def api_publish_upload():
 @app.get("/api/publish/log")
 def api_publish_log():
     return jsonify(get_publish_log(50))
+
+
+# ── OAuth2 Flow ──────────────────────────────────────────────────────
+
+
+@app.get("/api/tokens")
+def api_list_tokens():
+    return jsonify(get_all_tokens())
+
+
+@app.delete("/api/tokens/<platform>/<account_id>")
+def api_remove_token(platform: str, account_id: str):
+    if remove_token(platform, account_id):
+        return jsonify({"ok": True})
+    return jsonify({"error": "Token bulunamadi."}), 404
+
+
+@app.get("/api/oauth/youtube/url")
+def api_youtube_auth_url():
+    config = load_publish_config()
+    client_id = request.args.get("client_id", "") or config.get("youtube", {}).get("client_id", "")
+    account_id = request.args.get("account_id", "default")
+    if not client_id:
+        return jsonify({"error": "YouTube client_id gerekli."}), 400
+    redirect_uri = request.url_root.rstrip("/") + "/oauth/callback"
+    url = youtube_get_auth_url(client_id, redirect_uri, account_id)
+    return jsonify({"url": url, "redirect_uri": redirect_uri})
+
+
+@app.get("/api/oauth/tiktok/url")
+def api_tiktok_auth_url():
+    config = load_publish_config()
+    client_key = request.args.get("client_key", "") or config.get("tiktok", {}).get("client_key", "")
+    account_id = request.args.get("account_id", "default")
+    if not client_key:
+        return jsonify({"error": "TikTok client_key gerekli."}), 400
+    redirect_uri = request.url_root.rstrip("/") + "/oauth/callback"
+    url = tiktok_get_auth_url(client_key, redirect_uri, account_id)
+    return jsonify({"url": url, "redirect_uri": redirect_uri})
+
+
+@app.get("/oauth/callback")
+def oauth_callback():
+    """YouTube ve TikTok OAuth2 callback - code'u token'a cevirir."""
+    code = request.args.get("code", "")
+    state = request.args.get("state", "")
+    error = request.args.get("error", "")
+
+    if error:
+        return f"""<html><body style="font-family:sans-serif;text-align:center;padding:60px;">
+        <h2 style="color:#dc2626;">OAuth Hatasi</h2><p>{error}</p>
+        <a href="/publish">Geri Don</a></body></html>"""
+
+    if not code or not state:
+        return f"""<html><body style="font-family:sans-serif;text-align:center;padding:60px;">
+        <h2 style="color:#dc2626;">Eksik Parametre</h2><p>Code veya state eksik.</p>
+        <a href="/publish">Geri Don</a></body></html>"""
+
+    config = load_publish_config()
+    redirect_uri = request.url_root.rstrip("/") + "/oauth/callback"
+    platform = state.split("_")[0] if "_" in state else state
+    account_id = state.split("_", 1)[1] if "_" in state else "default"
+
+    try:
+        if platform == "youtube":
+            client_id = config.get("youtube", {}).get("client_id", "")
+            client_secret = config.get("youtube", {}).get("client_secret", "")
+            if not client_id or not client_secret:
+                raise ValueError("YouTube client_id ve client_secret ayarlanmamis.")
+            youtube_exchange_code(code, client_id, client_secret, redirect_uri, account_id)
+            msg = f"YouTube hesabi '{account_id}' basariyla baglandi!"
+
+        elif platform == "tiktok":
+            client_key = config.get("tiktok", {}).get("client_key", "")
+            client_secret = config.get("tiktok", {}).get("client_secret", "")
+            if not client_key or not client_secret:
+                raise ValueError("TikTok client_key ve client_secret ayarlanmamis.")
+            tiktok_exchange_code(code, client_key, client_secret, redirect_uri, account_id)
+            msg = f"TikTok hesabi '{account_id}' basariyla baglandi!"
+
+        else:
+            raise ValueError(f"Bilinmeyen platform: {platform}")
+
+        return f"""<html><body style="font-family:sans-serif;text-align:center;padding:60px;">
+        <h2 style="color:#16a34a;">Basarili!</h2><p>{msg}</p>
+        <a href="/publish" style="display:inline-block;margin-top:16px;padding:12px 24px;background:#1967d2;color:#fff;border-radius:8px;text-decoration:none;font-weight:700;">Paylasim Sayfasina Don</a>
+        </body></html>"""
+
+    except Exception as e:
+        return f"""<html><body style="font-family:sans-serif;text-align:center;padding:60px;">
+        <h2 style="color:#dc2626;">Token Alma Hatasi</h2><p>{e}</p>
+        <a href="/publish">Geri Don</a></body></html>"""
 
 
 @app.get("/api/outputs")

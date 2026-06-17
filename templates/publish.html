@@ -105,7 +105,7 @@
     <div>
       <div class="card">
         <h2>Video Paylas</h2>
-        <p style="font-size:13px;color:#64748b;margin:0 0 16px;">Kliplenen videoyu TikTok, Instagram Reels ve YouTube Shorts'a yukle.</p>
+        <p style="font-size:13px;color:#64748b;margin:0 0 16px;">Kliplenen videoyu YouTube Shorts ve TikTok'a yukle.</p>
 
         <h3>Klip Sec</h3>
         <div class="file-list" id="fileList">
@@ -114,6 +114,11 @@
 
         <label>Baslik</label>
         <input id="publishTitle" type="text" placeholder="Video basligi..." maxlength="200">
+
+        <label>Hesap</label>
+        <select id="publishAccount">
+          <option value="default">Varsayilan</option>
+        </select>
 
         <label>Platformlar</label>
         <div style="display:flex;gap:12px;margin-top:6px;flex-wrap:wrap;">
@@ -124,10 +129,6 @@
           <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0;">
             <input type="checkbox" class="platform-check" value="tiktok" checked style="width:16px;height:16px;">
             <span style="font-size:13px;">TikTok</span>
-          </label>
-          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0;">
-            <input type="checkbox" class="platform-check" value="instagram" checked style="width:16px;height:16px;">
-            <span style="font-size:13px;">Instagram Reels</span>
           </label>
         </div>
 
@@ -145,68 +146,90 @@
 
     <!-- Right: Platform Settings -->
     <div>
+      <!-- OAuth2 Hesap Baglama -->
       <div class="card">
-        <h2>Platform Ayarlari</h2>
-
+        <h2>Hesap Bagla (OAuth2)</h2>
         <div class="info-box">
-          Her platformun kendi API erisimi gereklidir. Token'lari sunucudaki <code>.env</code> dosyasina ekleyin.
-          Detayli kurulum icin her platformun developer portal'ini ziyaret edin.
+          Hesaplarinizi OAuth2 ile baglayarak otomatik video yukleme yapabilirsiniz.
+          Her platform icin bir kez baglanti kurmaniz yeterli - token'lar otomatik yenilenir.
         </div>
 
-        <!-- YouTube -->
-        <div class="platform-card" id="ytCard">
+        <label>Hesap Adi (coklu hesap icin)</label>
+        <input id="oauthAccountId" type="text" value="default" placeholder="default, gaming, komedi...">
+
+        <!-- YouTube OAuth -->
+        <div class="platform-card" id="ytCard" style="margin-top:14px;">
           <div class="platform-header">
-            <h4>YouTube Shorts</h4>
-            <label class="switch"><input type="checkbox" id="ytEnabled"><span class="slider"></span></label>
+            <h4>YouTube</h4>
+            <span class="tag tag-gray" id="ytStatus">Bagli degil</span>
           </div>
           <small style="color:#64748b;font-size:12px;display:block;margin-bottom:8px;">
-            Gerekli: <code>YOUTUBE_ACCESS_TOKEN</code> (OAuth2) — Google Cloud Console'dan
+            1. <a href="https://console.cloud.google.com/apis/credentials" target="_blank">Google Cloud Console</a>'dan OAuth2 Client ID olusturun<br>
+            2. Redirect URI olarak <code id="ytRedirectHint">...</code> ekleyin<br>
+            3. YouTube Data API v3'u etkinlestirin
           </small>
-          <label>Etiketler (virgul ile)</label>
-          <input id="ytTags" type="text" value="shorts, viral, trending" placeholder="shorts, viral, trending">
-          <label>Aciklama Sablonu</label>
-          <textarea id="ytDesc">{title}
-
-#shorts #viral #trending</textarea>
-          <label>Gizlilik</label>
-          <select id="ytVisibility">
-            <option value="public">Herkese Acik</option>
-            <option value="unlisted">Liste Disi</option>
-            <option value="private">Ozel</option>
-          </select>
+          <label>Client ID</label>
+          <input id="ytClientId" type="text" placeholder="xxx.apps.googleusercontent.com">
+          <label>Client Secret</label>
+          <input id="ytClientSecret" type="password" placeholder="GOCSPX-xxx">
+          <button class="btn btn-primary btn-sm" style="margin-top:10px;" onclick="connectYouTube()">YouTube Hesabi Bagla</button>
         </div>
 
-        <!-- TikTok -->
-        <div class="platform-card" id="ttCard">
+        <!-- TikTok OAuth -->
+        <div class="platform-card" id="ttCard" style="margin-top:12px;">
           <div class="platform-header">
             <h4>TikTok</h4>
-            <label class="switch"><input type="checkbox" id="ttEnabled"><span class="slider"></span></label>
+            <span class="tag tag-gray" id="ttStatus">Bagli degil</span>
           </div>
           <small style="color:#64748b;font-size:12px;display:block;margin-bottom:8px;">
-            Gerekli: <code>TIKTOK_ACCESS_TOKEN</code> — TikTok Developer Portal'dan
+            1. <a href="https://developers.tiktok.com/" target="_blank">TikTok Developer Portal</a>'dan uygulama olusturun<br>
+            2. Content Posting API erisimi isteyin<br>
+            3. Redirect URI olarak <code id="ttRedirectHint">...</code> ekleyin
           </small>
-          <label>Aciklama Sablonu</label>
-          <textarea id="ttDesc">{title} #fyp #viral #trending</textarea>
+          <label>Client Key</label>
+          <input id="ttClientKey" type="text" placeholder="TikTok client key">
+          <label>Client Secret</label>
+          <input id="ttClientSecret" type="password" placeholder="TikTok client secret">
+          <button class="btn btn-primary btn-sm" style="margin-top:10px;" onclick="connectTikTok()">TikTok Hesabi Bagla</button>
         </div>
+      </div>
 
-        <!-- Instagram -->
-        <div class="platform-card" id="igCard">
-          <div class="platform-header">
-            <h4>Instagram Reels</h4>
-            <label class="switch"><input type="checkbox" id="igEnabled"><span class="slider"></span></label>
-          </div>
-          <small style="color:#64748b;font-size:12px;display:block;margin-bottom:8px;">
-            Gerekli: <code>INSTAGRAM_ACCESS_TOKEN</code> + <code>INSTAGRAM_USER_ID</code> — Meta Developer Portal'dan.
-            Ayrica <code>PUBLIC_VIDEO_URL_BASE</code> gerekli (video dosyalarinin erisilebildigi public URL).
-          </small>
-          <label>Caption Sablonu</label>
-          <textarea id="igCaption">{title}
-.
-.
-#reels #viral #trending #explore</textarea>
-        </div>
+      <!-- Connected Tokens -->
+      <div class="card">
+        <h3>Bagli Hesaplar</h3>
+        <div id="tokenList"><div class="empty">Yukleniyor...</div></div>
+      </div>
 
-        <button class="btn btn-primary btn-block" id="savePlatformBtn">Platform Ayarlarini Kaydet</button>
+      <!-- Platform Settings -->
+      <div class="card">
+        <h3>Yukleme Ayarlari</h3>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:4px;">
+          <input type="checkbox" id="ytEnabled" style="width:16px;height:16px;accent-color:#1967d2;">
+          <span style="font-size:13px;font-weight:700;">YouTube aktif</span>
+        </label>
+        <label>Etiketler</label>
+        <input id="ytTags" type="text" value="shorts, viral, trending">
+        <label>Aciklama Sablonu</label>
+        <textarea id="ytDesc" rows="2">{title}
+
+#shorts #viral #trending</textarea>
+        <label>Gizlilik</label>
+        <select id="ytVisibility">
+          <option value="public">Herkese Acik</option>
+          <option value="unlisted">Liste Disi</option>
+          <option value="private">Ozel</option>
+        </select>
+
+        <hr style="border:0;border-top:1px solid #e2e8f0;margin:16px 0;">
+
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:4px;">
+          <input type="checkbox" id="ttEnabled" style="width:16px;height:16px;accent-color:#1967d2;">
+          <span style="font-size:13px;font-weight:700;">TikTok aktif</span>
+        </label>
+        <label>Aciklama Sablonu</label>
+        <textarea id="ttDesc" rows="2">{title} #fyp #viral #trending</textarea>
+
+        <button class="btn btn-primary btn-block" id="savePlatformBtn">Ayarlari Kaydet</button>
       </div>
     </div>
   </div>
@@ -218,17 +241,22 @@
 
   function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
 
+  // Show redirect URI hint
+  const baseUrl = window.location.origin;
+  const redirectUri = baseUrl + "/oauth/callback";
+  $("ytRedirectHint").textContent = redirectUri;
+  $("ttRedirectHint").textContent = redirectUri;
+
+  // Files
   async function loadFiles() {
     try {
       const res = await fetch("/api/outputs");
       const files = await res.json();
       const container = $("fileList");
-
       if (!files.length) {
-        container.innerHTML = '<div class="empty">Henuz kliplenmis video yok. Oncelikle Video Kesici veya Trend Kesif ile klip olusturun.</div>';
+        container.innerHTML = '<div class="empty">Henuz kliplenmis video yok.</div>';
         return;
       }
-
       container.innerHTML = files.map(f => `
         <div class="file-item" data-path="${esc(f.path)}" onclick="selectFile(this, '${esc(f.path)}', '${esc(f.name)}')">
           <div class="file-name">${esc(f.name)}</div>
@@ -247,6 +275,7 @@
     }
   }
 
+  // Publish
   async function publish() {
     if (!selectedFile) { alert("Lutfen bir video secin."); return; }
     if (!$("publishTitle").value.trim()) { alert("Baslik gerekli."); return; }
@@ -266,6 +295,7 @@
           video_path: selectedFile,
           title: $("publishTitle").value.trim(),
           platforms: platforms,
+          account_id: $("publishAccount").value,
         })
       });
       const data = await res.json();
@@ -273,10 +303,10 @@
 
       let msg = "Sonuclar:\n";
       for (const r of (data.results || [])) {
-        msg += `${r.platform}: ${r.status}`;
-        if (r.url) msg += ` (${r.url})`;
-        if (r.error) msg += ` - ${r.error}`;
-        if (r.reason) msg += ` (${r.reason})`;
+        msg += r.platform + ": " + r.status;
+        if (r.url) msg += " (" + r.url + ")";
+        if (r.error) msg += " - " + r.error;
+        if (r.reason) msg += " (" + r.reason + ")";
         msg += "\n";
       }
       alert(msg);
@@ -289,6 +319,110 @@
     }
   }
 
+  // OAuth connect
+  async function connectYouTube() {
+    const clientId = $("ytClientId").value.trim();
+    if (!clientId) { alert("YouTube Client ID girin."); return; }
+
+    // Save credentials first
+    await fetch("/api/publish/config", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        youtube: { client_id: clientId, client_secret: $("ytClientSecret").value.trim() }
+      })
+    });
+
+    const accountId = $("oauthAccountId").value.trim() || "default";
+    const res = await fetch("/api/oauth/youtube/url?client_id=" + encodeURIComponent(clientId) + "&account_id=" + encodeURIComponent(accountId));
+    const data = await res.json();
+    if (data.url) {
+      window.open(data.url, "_blank", "width=600,height=700");
+    } else {
+      alert(data.error || "URL olusturulamadi.");
+    }
+  }
+
+  async function connectTikTok() {
+    const clientKey = $("ttClientKey").value.trim();
+    if (!clientKey) { alert("TikTok Client Key girin."); return; }
+
+    await fetch("/api/publish/config", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        tiktok: { client_key: clientKey, client_secret: $("ttClientSecret").value.trim() }
+      })
+    });
+
+    const accountId = $("oauthAccountId").value.trim() || "default";
+    const res = await fetch("/api/oauth/tiktok/url?client_key=" + encodeURIComponent(clientKey) + "&account_id=" + encodeURIComponent(accountId));
+    const data = await res.json();
+    if (data.url) {
+      window.open(data.url, "_blank", "width=600,height=700");
+    } else {
+      alert(data.error || "URL olusturulamadi.");
+    }
+  }
+
+  // Tokens
+  async function loadTokens() {
+    try {
+      const res = await fetch("/api/tokens");
+      const tokens = await res.json();
+      const container = $("tokenList");
+      const entries = Object.entries(tokens);
+
+      if (!entries.length) {
+        container.innerHTML = '<div class="empty">Henuz bagli hesap yok.</div>';
+        return;
+      }
+
+      // Populate account dropdown
+      const accountSelect = $("publishAccount");
+      const accounts = new Set();
+      entries.forEach(([key]) => {
+        const parts = key.split("_");
+        const accId = parts.slice(1).join("_") || "default";
+        accounts.add(accId);
+      });
+      accountSelect.innerHTML = [...accounts].map(a =>
+        '<option value="' + esc(a) + '">' + esc(a) + '</option>'
+      ).join("");
+
+      const platformColors = { youtube: "tag-red", tiktok: "tag-purple" };
+      container.innerHTML = entries.map(([key, val]) => {
+        const parts = key.split("_");
+        const platform = parts[0];
+        const accountId = parts.slice(1).join("_") || "default";
+        const pColor = platformColors[platform] || "tag-gray";
+
+        return '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f1f5f9;">' +
+          '<span class="tag ' + pColor + '">' + platform + '</span>' +
+          '<span style="font-size:13px;font-weight:600;flex:1;">' + esc(accountId) + '</span>' +
+          '<span style="font-size:11px;color:#94a3b8;">' + (val.saved_at || "") + '</span>' +
+          '<button class="btn btn-danger btn-sm" onclick="removeToken(\'' + platform + '\',\'' + esc(accountId) + '\')">Kaldir</button>' +
+        '</div>';
+      }).join("");
+
+      // Update status tags
+      const ytKeys = entries.filter(([k]) => k.startsWith("youtube_"));
+      const ttKeys = entries.filter(([k]) => k.startsWith("tiktok_"));
+      $("ytStatus").textContent = ytKeys.length ? ytKeys.length + " hesap bagli" : "Bagli degil";
+      $("ytStatus").className = "tag " + (ytKeys.length ? "tag-green" : "tag-gray");
+      $("ttStatus").textContent = ttKeys.length ? ttKeys.length + " hesap bagli" : "Bagli degil";
+      $("ttStatus").className = "tag " + (ttKeys.length ? "tag-green" : "tag-gray");
+
+    } catch(e) { console.error(e); }
+  }
+
+  async function removeToken(platform, accountId) {
+    if (!confirm(platform + " / " + accountId + " baglantisinini kaldirmak istediginize emin misiniz?")) return;
+    await fetch("/api/tokens/" + platform + "/" + accountId, {method:"DELETE"});
+    loadTokens();
+  }
+
+  // Config
   async function loadPlatformConfig() {
     try {
       const res = await fetch("/api/publish/config");
@@ -298,38 +432,29 @@
       $("ytTags").value = (cfg.youtube?.default_tags || []).join(", ");
       $("ytDesc").value = cfg.youtube?.description_template || "";
       $("ytVisibility").value = cfg.youtube?.default_visibility || "public";
+      if (cfg.youtube?.client_id) $("ytClientId").value = cfg.youtube.client_id;
 
       $("ttEnabled").checked = cfg.tiktok?.enabled || false;
       $("ttDesc").value = cfg.tiktok?.description_template || "";
-
-      $("igEnabled").checked = cfg.instagram?.enabled || false;
-      $("igCaption").value = cfg.instagram?.caption_template || "";
-
-      updatePlatformCards();
+      if (cfg.tiktok?.client_key) $("ttClientKey").value = cfg.tiktok.client_key;
     } catch(e) { console.error(e); }
-  }
-
-  function updatePlatformCards() {
-    $("ytCard").classList.toggle("enabled", $("ytEnabled").checked);
-    $("ttCard").classList.toggle("enabled", $("ttEnabled").checked);
-    $("igCard").classList.toggle("enabled", $("igEnabled").checked);
   }
 
   async function savePlatformConfig() {
     const config = {
       youtube: {
         enabled: $("ytEnabled").checked,
+        client_id: $("ytClientId").value.trim(),
+        client_secret: $("ytClientSecret").value.trim() || undefined,
         default_tags: $("ytTags").value.split(",").map(t => t.trim()).filter(Boolean),
         description_template: $("ytDesc").value,
         default_visibility: $("ytVisibility").value,
       },
       tiktok: {
         enabled: $("ttEnabled").checked,
+        client_key: $("ttClientKey").value.trim(),
+        client_secret: $("ttClientSecret").value.trim() || undefined,
         description_template: $("ttDesc").value,
-      },
-      instagram: {
-        enabled: $("igEnabled").checked,
-        caption_template: $("igCaption").value,
       },
     };
 
@@ -341,7 +466,7 @@
       });
       if (res.ok) {
         $("savePlatformBtn").textContent = "Kaydedildi!";
-        setTimeout(() => $("savePlatformBtn").textContent = "Platform Ayarlarini Kaydet", 2000);
+        setTimeout(() => $("savePlatformBtn").textContent = "Ayarlari Kaydet", 2000);
       }
     } catch(e) { alert("Hata: " + e.message); }
   }
@@ -351,14 +476,12 @@
       const res = await fetch("/api/publish/log");
       const log = await res.json();
       const container = $("publishLog");
-
       if (!log.length) {
         container.innerHTML = '<div class="empty">Henuz paylasim yok.</div>';
         return;
       }
 
-      const platformColors = { youtube: "tag-red", tiktok: "tag-purple", instagram: "tag-pink" };
-
+      const platformColors = { youtube: "tag-red", tiktok: "tag-purple" };
       container.innerHTML = log.reverse().map(entry => {
         const pColor = platformColors[entry.platform] || "tag-blue";
         let statusTag = "";
@@ -366,12 +489,13 @@
         else if (entry.status === "error") statusTag = '<span class="tag tag-red">Hata</span>';
         else if (entry.status === "skipped") statusTag = '<span class="tag tag-orange">Atlandi</span>';
 
-        return `<div class="log-entry">
-          <div class="log-time">${entry.time || ""} <span class="tag ${pColor}">${entry.platform || "?"}</span> ${statusTag}</div>
-          <div style="font-size:12px;font-weight:600;margin-top:2px;">${esc(entry.title || entry.description || entry.caption || entry.error || "")}</div>
-          ${entry.url ? '<a href="' + entry.url + '" target="_blank" style="font-size:11px;">' + entry.url + '</a>' : ""}
-          ${entry.error && entry.status !== "done" ? '<div style="font-size:11px;color:#dc2626;">' + esc(entry.error) + '</div>' : ""}
-        </div>`;
+        return '<div class="log-entry">' +
+          '<div class="log-time">' + (entry.time || "") + ' <span class="tag ' + pColor + '">' + (entry.platform || "?") + '</span> ' + statusTag +
+          (entry.account ? ' <span class="tag tag-gray">' + esc(entry.account) + '</span>' : "") + '</div>' +
+          '<div style="font-size:12px;font-weight:600;margin-top:2px;">' + esc(entry.title || entry.description || entry.error || "") + '</div>' +
+          (entry.url ? '<a href="' + entry.url + '" target="_blank" style="font-size:11px;">' + entry.url + '</a>' : "") +
+          (entry.error && entry.status !== "done" ? '<div style="font-size:11px;color:#dc2626;">' + esc(entry.error) + '</div>' : "") +
+        '</div>';
       }).join("");
     } catch(e) { console.error(e); }
   }
@@ -380,14 +504,15 @@
   $("publishBtn").addEventListener("click", publish);
   $("savePlatformBtn").addEventListener("click", savePlatformConfig);
   $("refreshLogBtn").addEventListener("click", loadPublishLog);
-  $("ytEnabled").addEventListener("change", updatePlatformCards);
-  $("ttEnabled").addEventListener("change", updatePlatformCards);
-  $("igEnabled").addEventListener("change", updatePlatformCards);
 
   // Init
   loadFiles();
   loadPlatformConfig();
+  loadTokens();
   loadPublishLog();
+
+  // Refresh tokens when returning from OAuth popup
+  window.addEventListener("focus", () => { setTimeout(loadTokens, 500); });
 </script>
 </body>
 </html>

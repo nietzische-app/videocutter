@@ -18,3 +18,4 @@ publish_log.json
 publish_config.json
 channels_config.json
 downloads/
+tokens.json
