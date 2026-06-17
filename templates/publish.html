@@ -1,0 +1,518 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Paylasim - Video Kesici</title>
+  <style>
+    :root { color-scheme:light; font-family:Inter,Segoe UI,Arial,sans-serif; background:#f5f7fb; color:#172033; }
+    body { margin:0; min-height:100vh; padding:28px; }
+    .container { max-width:1100px; margin:0 auto; }
+
+    .nav { display:flex; gap:12px; margin-bottom:24px; align-items:center; }
+    .nav a { text-decoration:none; padding:8px 16px; border-radius:8px; font-weight:700; font-size:14px; color:#475569; transition:all .2s; }
+    .nav a:hover { background:#e2e8f0; }
+    .nav a.active { background:#1967d2; color:#fff; }
+
+    .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+    @media(max-width:768px) { .grid-2 { grid-template-columns:1fr; } }
+
+    .card { background:#fff; border:1px solid #d9e1ef; border-radius:12px; box-shadow:0 6px 24px rgba(24,39,75,.08); padding:24px; margin-bottom:20px; }
+    .card h2 { margin:0 0 16px; font-size:20px; }
+    .card h3 { margin:0 0 12px; font-size:16px; color:#374151; }
+
+    label { display:block; margin:12px 0 4px; font-weight:700; font-size:13px; color:#374151; }
+    input, select, textarea {
+      width:100%; box-sizing:border-box; border:1px solid #d1d5db; border-radius:8px;
+      padding:10px 12px; font:inherit; font-size:14px; background:#fff; transition:border-color .2s;
+    }
+    textarea { resize:vertical; min-height:60px; }
+    input:focus, select:focus, textarea:focus { outline:none; border-color:#1967d2; box-shadow:0 0 0 3px rgba(25,103,210,.12); }
+
+    .btn {
+      border:0; border-radius:8px; padding:10px 18px; font:inherit; font-size:14px;
+      font-weight:700; cursor:pointer; transition:all .2s;
+    }
+    .btn-primary { background:#1967d2; color:#fff; }
+    .btn-primary:hover:not(:disabled) { background:#1557b0; }
+    .btn-primary:disabled { background:#94a3b8; cursor:wait; }
+    .btn-success { background:#16a34a; color:#fff; }
+    .btn-success:hover { background:#15803d; }
+    .btn-danger { background:#dc2626; color:#fff; }
+    .btn-outline { background:#fff; color:#475569; border:1px solid #d1d5db; }
+    .btn-outline:hover { background:#f1f5f9; }
+    .btn-sm { padding:6px 12px; font-size:12px; }
+    .btn-block { width:100%; margin-top:14px; }
+
+    .tag { display:inline-block; padding:3px 8px; border-radius:5px; font-size:11px; font-weight:700; }
+    .tag-blue { background:#eff6ff; color:#1967d2; }
+    .tag-green { background:#f0fdf4; color:#16a34a; }
+    .tag-red { background:#fef2f2; color:#dc2626; }
+    .tag-orange { background:#fffbeb; color:#d97706; }
+    .tag-purple { background:#faf5ff; color:#7c3aed; }
+    .tag-pink { background:#fdf2f8; color:#db2777; }
+
+    .platform-icon { font-size:20px; margin-right:6px; vertical-align:middle; }
+
+    .platform-card {
+      border:1px solid #e2e8f0; border-radius:10px; padding:16px; margin-bottom:12px;
+      transition:all .2s;
+    }
+    .platform-card.enabled { border-color:#16a34a; background:#f0fdf4; }
+    .platform-header { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+    .platform-header h4 { margin:0; font-size:15px; flex:1; }
+
+    .switch { position:relative; display:inline-block; width:44px; height:24px; }
+    .switch input { opacity:0; width:0; height:0; }
+    .slider { position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background:#cbd5e1; border-radius:24px; transition:.3s; }
+    .slider:before { content:""; position:absolute; height:18px; width:18px; left:3px; bottom:3px; background:#fff; border-radius:50%; transition:.3s; }
+    .switch input:checked+.slider { background:#16a34a; }
+    .switch input:checked+.slider:before { transform:translateX(20px); }
+
+    .file-list { max-height:400px; overflow-y:auto; }
+    .file-item {
+      display:flex; align-items:center; gap:10px; padding:10px; border-bottom:1px solid #f1f5f9;
+      cursor:pointer; transition:background .15s;
+    }
+    .file-item:hover { background:#f8fafc; }
+    .file-item.selected { background:#eff6ff; border-left:3px solid #1967d2; }
+    .file-name { font-size:13px; font-weight:600; flex:1; word-break:break-all; }
+    .file-meta { font-size:11px; color:#94a3b8; white-space:nowrap; }
+
+    .log-list { max-height:300px; overflow-y:auto; font-size:12px; }
+    .log-entry { padding:8px 10px; border-bottom:1px solid #f1f5f9; }
+    .log-entry:last-child { border-bottom:0; }
+    .log-time { color:#94a3b8; font-size:11px; }
+
+    .empty { text-align:center; padding:30px 20px; color:#94a3b8; font-size:14px; }
+
+    .info-box { padding:12px 16px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; font-size:13px; color:#1e40af; margin-bottom:16px; line-height:1.5; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="nav">
+    <a href="/">Video Kesici</a>
+    <a href="/trends">Trend Kesif</a>
+    <a href="/publish" class="active">Paylasim</a>
+    <a href="/download-video">Indirici</a>
+    <a href="/channels">Kanallar</a>
+  </div>
+
+  <div class="grid-2">
+    <!-- Left: Video Selection + Publish -->
+    <div>
+      <div class="card">
+        <h2>Video Paylas</h2>
+        <p style="font-size:13px;color:#64748b;margin:0 0 16px;">Kliplenen videoyu YouTube Shorts ve TikTok'a yukle.</p>
+
+        <h3>Klip Sec</h3>
+        <div class="file-list" id="fileList">
+          <div class="empty">Yukleniyor...</div>
+        </div>
+
+        <label>Baslik</label>
+        <input id="publishTitle" type="text" placeholder="Video basligi..." maxlength="200">
+
+        <label>Hesap</label>
+        <select id="publishAccount">
+          <option value="default">Varsayilan</option>
+        </select>
+
+        <label>Platformlar</label>
+        <div style="display:flex;gap:12px;margin-top:6px;flex-wrap:wrap;">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0;">
+            <input type="checkbox" class="platform-check" value="youtube" checked style="width:16px;height:16px;">
+            <span style="font-size:13px;">YouTube Shorts</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0;">
+            <input type="checkbox" class="platform-check" value="tiktok" checked style="width:16px;height:16px;">
+            <span style="font-size:13px;">TikTok</span>
+          </label>
+        </div>
+
+        <button class="btn btn-primary btn-block" id="publishBtn">Paylas</button>
+      </div>
+
+      <div class="card">
+        <h3>Paylasim Gecmisi</h3>
+        <div class="log-list" id="publishLog">
+          <div class="empty">Henuz paylasim yok.</div>
+        </div>
+        <button class="btn btn-outline btn-sm" style="margin-top:10px;" id="refreshLogBtn">Yenile</button>
+      </div>
+    </div>
+
+    <!-- Right: Platform Settings -->
+    <div>
+      <!-- OAuth2 Hesap Baglama -->
+      <div class="card">
+        <h2>Hesap Bagla (OAuth2)</h2>
+        <div class="info-box">
+          Hesaplarinizi OAuth2 ile baglayarak otomatik video yukleme yapabilirsiniz.
+          Her platform icin bir kez baglanti kurmaniz yeterli - token'lar otomatik yenilenir.
+        </div>
+
+        <label>Hesap Adi (coklu hesap icin)</label>
+        <input id="oauthAccountId" type="text" value="default" placeholder="default, gaming, komedi...">
+
+        <!-- YouTube OAuth -->
+        <div class="platform-card" id="ytCard" style="margin-top:14px;">
+          <div class="platform-header">
+            <h4>YouTube</h4>
+            <span class="tag tag-gray" id="ytStatus">Bagli degil</span>
+          </div>
+          <small style="color:#64748b;font-size:12px;display:block;margin-bottom:8px;">
+            1. <a href="https://console.cloud.google.com/apis/credentials" target="_blank">Google Cloud Console</a>'dan OAuth2 Client ID olusturun<br>
+            2. Redirect URI olarak <code id="ytRedirectHint">...</code> ekleyin<br>
+            3. YouTube Data API v3'u etkinlestirin
+          </small>
+          <label>Client ID</label>
+          <input id="ytClientId" type="text" placeholder="xxx.apps.googleusercontent.com">
+          <label>Client Secret</label>
+          <input id="ytClientSecret" type="password" placeholder="GOCSPX-xxx">
+          <button class="btn btn-primary btn-sm" style="margin-top:10px;" onclick="connectYouTube()">YouTube Hesabi Bagla</button>
+        </div>
+
+        <!-- TikTok OAuth -->
+        <div class="platform-card" id="ttCard" style="margin-top:12px;">
+          <div class="platform-header">
+            <h4>TikTok</h4>
+            <span class="tag tag-gray" id="ttStatus">Bagli degil</span>
+          </div>
+          <small style="color:#64748b;font-size:12px;display:block;margin-bottom:8px;">
+            1. <a href="https://developers.tiktok.com/" target="_blank">TikTok Developer Portal</a>'dan uygulama olusturun<br>
+            2. Content Posting API erisimi isteyin<br>
+            3. Redirect URI olarak <code id="ttRedirectHint">...</code> ekleyin
+          </small>
+          <label>Client Key</label>
+          <input id="ttClientKey" type="text" placeholder="TikTok client key">
+          <label>Client Secret</label>
+          <input id="ttClientSecret" type="password" placeholder="TikTok client secret">
+          <button class="btn btn-primary btn-sm" style="margin-top:10px;" onclick="connectTikTok()">TikTok Hesabi Bagla</button>
+        </div>
+      </div>
+
+      <!-- Connected Tokens -->
+      <div class="card">
+        <h3>Bagli Hesaplar</h3>
+        <div id="tokenList"><div class="empty">Yukleniyor...</div></div>
+      </div>
+
+      <!-- Platform Settings -->
+      <div class="card">
+        <h3>Yukleme Ayarlari</h3>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:4px;">
+          <input type="checkbox" id="ytEnabled" style="width:16px;height:16px;accent-color:#1967d2;">
+          <span style="font-size:13px;font-weight:700;">YouTube aktif</span>
+        </label>
+        <label>Etiketler</label>
+        <input id="ytTags" type="text" value="shorts, viral, trending">
+        <label>Aciklama Sablonu</label>
+        <textarea id="ytDesc" rows="2">{title}
+
+#shorts #viral #trending</textarea>
+        <label>Gizlilik</label>
+        <select id="ytVisibility">
+          <option value="public">Herkese Acik</option>
+          <option value="unlisted">Liste Disi</option>
+          <option value="private">Ozel</option>
+        </select>
+
+        <hr style="border:0;border-top:1px solid #e2e8f0;margin:16px 0;">
+
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:4px;">
+          <input type="checkbox" id="ttEnabled" style="width:16px;height:16px;accent-color:#1967d2;">
+          <span style="font-size:13px;font-weight:700;">TikTok aktif</span>
+        </label>
+        <label>Aciklama Sablonu</label>
+        <textarea id="ttDesc" rows="2">{title} #fyp #viral #trending</textarea>
+
+        <button class="btn btn-primary btn-block" id="savePlatformBtn">Ayarlari Kaydet</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const $ = id => document.getElementById(id);
+  let selectedFile = null;
+
+  function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+
+  // Show redirect URI hint
+  const baseUrl = window.location.origin;
+  const redirectUri = baseUrl + "/oauth/callback";
+  $("ytRedirectHint").textContent = redirectUri;
+  $("ttRedirectHint").textContent = redirectUri;
+
+  // Files
+  async function loadFiles() {
+    try {
+      const res = await fetch("/api/outputs");
+      const files = await res.json();
+      const container = $("fileList");
+      if (!files.length) {
+        container.innerHTML = '<div class="empty">Henuz kliplenmis video yok.</div>';
+        return;
+      }
+      container.innerHTML = files.map(f => `
+        <div class="file-item" data-path="${esc(f.path)}" onclick="selectFile(this, '${esc(f.path)}', '${esc(f.name)}')">
+          <div class="file-name">${esc(f.name)}</div>
+          <div class="file-meta">${f.size_mb} MB | ${f.created}</div>
+        </div>
+      `).join("");
+    } catch(e) { console.error(e); }
+  }
+
+  function selectFile(el, path, name) {
+    document.querySelectorAll(".file-item").forEach(i => i.classList.remove("selected"));
+    el.classList.add("selected");
+    selectedFile = path;
+    if (!$("publishTitle").value) {
+      $("publishTitle").value = name.replace(/\.mp4$/i, "").replace(/_/g, " ");
+    }
+  }
+
+  // Publish
+  async function publish() {
+    if (!selectedFile) { alert("Lutfen bir video secin."); return; }
+    if (!$("publishTitle").value.trim()) { alert("Baslik gerekli."); return; }
+
+    const platforms = [...document.querySelectorAll(".platform-check:checked")].map(c => c.value);
+    if (!platforms.length) { alert("En az bir platform secin."); return; }
+
+    const btn = $("publishBtn");
+    btn.disabled = true;
+    btn.textContent = "Yukleniyor...";
+
+    try {
+      const res = await fetch("/api/publish/upload", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          video_path: selectedFile,
+          title: $("publishTitle").value.trim(),
+          platforms: platforms,
+          account_id: $("publishAccount").value,
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) { alert(data.error || "Hata"); return; }
+
+      let msg = "Sonuclar:\n";
+      for (const r of (data.results || [])) {
+        msg += r.platform + ": " + r.status;
+        if (r.url) msg += " (" + r.url + ")";
+        if (r.error) msg += " - " + r.error;
+        if (r.reason) msg += " (" + r.reason + ")";
+        msg += "\n";
+      }
+      alert(msg);
+      loadPublishLog();
+    } catch(e) {
+      alert("Hata: " + e.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Paylas";
+    }
+  }
+
+  // OAuth connect
+  async function connectYouTube() {
+    const clientId = $("ytClientId").value.trim();
+    if (!clientId) { alert("YouTube Client ID girin."); return; }
+
+    // Save credentials first
+    await fetch("/api/publish/config", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        youtube: { client_id: clientId, client_secret: $("ytClientSecret").value.trim() }
+      })
+    });
+
+    const accountId = $("oauthAccountId").value.trim() || "default";
+    const res = await fetch("/api/oauth/youtube/url?client_id=" + encodeURIComponent(clientId) + "&account_id=" + encodeURIComponent(accountId));
+    const data = await res.json();
+    if (data.url) {
+      window.open(data.url, "_blank", "width=600,height=700");
+    } else {
+      alert(data.error || "URL olusturulamadi.");
+    }
+  }
+
+  async function connectTikTok() {
+    const clientKey = $("ttClientKey").value.trim();
+    if (!clientKey) { alert("TikTok Client Key girin."); return; }
+
+    await fetch("/api/publish/config", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        tiktok: { client_key: clientKey, client_secret: $("ttClientSecret").value.trim() }
+      })
+    });
+
+    const accountId = $("oauthAccountId").value.trim() || "default";
+    const res = await fetch("/api/oauth/tiktok/url?client_key=" + encodeURIComponent(clientKey) + "&account_id=" + encodeURIComponent(accountId));
+    const data = await res.json();
+    if (data.url) {
+      window.open(data.url, "_blank", "width=600,height=700");
+    } else {
+      alert(data.error || "URL olusturulamadi.");
+    }
+  }
+
+  // Tokens
+  async function loadTokens() {
+    try {
+      const res = await fetch("/api/tokens");
+      const tokens = await res.json();
+      const container = $("tokenList");
+      const entries = Object.entries(tokens);
+
+      if (!entries.length) {
+        container.innerHTML = '<div class="empty">Henuz bagli hesap yok.</div>';
+        return;
+      }
+
+      // Populate account dropdown
+      const accountSelect = $("publishAccount");
+      const accounts = new Set();
+      entries.forEach(([key]) => {
+        const parts = key.split("_");
+        const accId = parts.slice(1).join("_") || "default";
+        accounts.add(accId);
+      });
+      accountSelect.innerHTML = [...accounts].map(a =>
+        '<option value="' + esc(a) + '">' + esc(a) + '</option>'
+      ).join("");
+
+      const platformColors = { youtube: "tag-red", tiktok: "tag-purple" };
+      container.innerHTML = entries.map(([key, val]) => {
+        const parts = key.split("_");
+        const platform = parts[0];
+        const accountId = parts.slice(1).join("_") || "default";
+        const pColor = platformColors[platform] || "tag-gray";
+
+        return '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f1f5f9;">' +
+          '<span class="tag ' + pColor + '">' + platform + '</span>' +
+          '<span style="font-size:13px;font-weight:600;flex:1;">' + esc(accountId) + '</span>' +
+          '<span style="font-size:11px;color:#94a3b8;">' + (val.saved_at || "") + '</span>' +
+          '<button class="btn btn-danger btn-sm" onclick="removeToken(\'' + platform + '\',\'' + esc(accountId) + '\')">Kaldir</button>' +
+        '</div>';
+      }).join("");
+
+      // Update status tags
+      const ytKeys = entries.filter(([k]) => k.startsWith("youtube_"));
+      const ttKeys = entries.filter(([k]) => k.startsWith("tiktok_"));
+      $("ytStatus").textContent = ytKeys.length ? ytKeys.length + " hesap bagli" : "Bagli degil";
+      $("ytStatus").className = "tag " + (ytKeys.length ? "tag-green" : "tag-gray");
+      $("ttStatus").textContent = ttKeys.length ? ttKeys.length + " hesap bagli" : "Bagli degil";
+      $("ttStatus").className = "tag " + (ttKeys.length ? "tag-green" : "tag-gray");
+
+    } catch(e) { console.error(e); }
+  }
+
+  async function removeToken(platform, accountId) {
+    if (!confirm(platform + " / " + accountId + " baglantisinini kaldirmak istediginize emin misiniz?")) return;
+    await fetch("/api/tokens/" + platform + "/" + accountId, {method:"DELETE"});
+    loadTokens();
+  }
+
+  // Config
+  async function loadPlatformConfig() {
+    try {
+      const res = await fetch("/api/publish/config");
+      const cfg = await res.json();
+
+      $("ytEnabled").checked = cfg.youtube?.enabled || false;
+      $("ytTags").value = (cfg.youtube?.default_tags || []).join(", ");
+      $("ytDesc").value = cfg.youtube?.description_template || "";
+      $("ytVisibility").value = cfg.youtube?.default_visibility || "public";
+      if (cfg.youtube?.client_id) $("ytClientId").value = cfg.youtube.client_id;
+
+      $("ttEnabled").checked = cfg.tiktok?.enabled || false;
+      $("ttDesc").value = cfg.tiktok?.description_template || "";
+      if (cfg.tiktok?.client_key) $("ttClientKey").value = cfg.tiktok.client_key;
+    } catch(e) { console.error(e); }
+  }
+
+  async function savePlatformConfig() {
+    const config = {
+      youtube: {
+        enabled: $("ytEnabled").checked,
+        client_id: $("ytClientId").value.trim(),
+        client_secret: $("ytClientSecret").value.trim() || undefined,
+        default_tags: $("ytTags").value.split(",").map(t => t.trim()).filter(Boolean),
+        description_template: $("ytDesc").value,
+        default_visibility: $("ytVisibility").value,
+      },
+      tiktok: {
+        enabled: $("ttEnabled").checked,
+        client_key: $("ttClientKey").value.trim(),
+        client_secret: $("ttClientSecret").value.trim() || undefined,
+        description_template: $("ttDesc").value,
+      },
+    };
+
+    try {
+      const res = await fetch("/api/publish/config", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(config),
+      });
+      if (res.ok) {
+        $("savePlatformBtn").textContent = "Kaydedildi!";
+        setTimeout(() => $("savePlatformBtn").textContent = "Ayarlari Kaydet", 2000);
+      }
+    } catch(e) { alert("Hata: " + e.message); }
+  }
+
+  async function loadPublishLog() {
+    try {
+      const res = await fetch("/api/publish/log");
+      const log = await res.json();
+      const container = $("publishLog");
+      if (!log.length) {
+        container.innerHTML = '<div class="empty">Henuz paylasim yok.</div>';
+        return;
+      }
+
+      const platformColors = { youtube: "tag-red", tiktok: "tag-purple" };
+      container.innerHTML = log.reverse().map(entry => {
+        const pColor = platformColors[entry.platform] || "tag-blue";
+        let statusTag = "";
+        if (entry.status === "done") statusTag = '<span class="tag tag-green">Basarili</span>';
+        else if (entry.status === "error") statusTag = '<span class="tag tag-red">Hata</span>';
+        else if (entry.status === "skipped") statusTag = '<span class="tag tag-orange">Atlandi</span>';
+
+        return '<div class="log-entry">' +
+          '<div class="log-time">' + (entry.time || "") + ' <span class="tag ' + pColor + '">' + (entry.platform || "?") + '</span> ' + statusTag +
+          (entry.account ? ' <span class="tag tag-gray">' + esc(entry.account) + '</span>' : "") + '</div>' +
+          '<div style="font-size:12px;font-weight:600;margin-top:2px;">' + esc(entry.title || entry.description || entry.error || "") + '</div>' +
+          (entry.url ? '<a href="' + entry.url + '" target="_blank" style="font-size:11px;">' + entry.url + '</a>' : "") +
+          (entry.error && entry.status !== "done" ? '<div style="font-size:11px;color:#dc2626;">' + esc(entry.error) + '</div>' : "") +
+        '</div>';
+      }).join("");
+    } catch(e) { console.error(e); }
+  }
+
+  // Events
+  $("publishBtn").addEventListener("click", publish);
+  $("savePlatformBtn").addEventListener("click", savePlatformConfig);
+  $("refreshLogBtn").addEventListener("click", loadPublishLog);
+
+  // Init
+  loadFiles();
+  loadPlatformConfig();
+  loadTokens();
+  loadPublishLog();
+
+  // Refresh tokens when returning from OAuth popup
+  window.addEventListener("focus", () => { setTimeout(loadTokens, 500); });
+</script>
+</body>
+</html>

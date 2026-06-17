@@ -1,0 +1,472 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Video Kesici</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Inter, Segoe UI, Arial, sans-serif;
+      background: #f5f7fb;
+      color: #172033;
+    }
+    body { margin:0; min-height:100vh; display:grid; place-items:center; padding:28px; }
+    main {
+      width: min(820px, 100%);
+      background: #fff;
+      border: 1px solid #d9e1ef;
+      border-radius: 12px;
+      box-shadow: 0 18px 60px rgba(24,39,75,.12);
+      padding: 32px;
+    }
+    h1 { margin:0 0 4px; font-size:28px; }
+    .subtitle { margin:0 0 24px; font-size:14px; color:#64748b; }
+    label { display:block; margin:16px 0 6px; font-weight:700; font-size:13px; color:#374151; }
+    input, select {
+      width:100%; box-sizing:border-box; border:1px solid #d1d5db; border-radius:8px;
+      padding:11px 13px; font:inherit; font-size:14px; background:#fff; transition:border-color .2s;
+    }
+    input:focus, select:focus { outline:none; border-color:#1967d2; box-shadow:0 0 0 3px rgba(25,103,210,.12); }
+    .row { display:grid; grid-template-columns:1fr 140px; gap:14px; }
+
+    /* Tabs */
+    .tabs { display:flex; gap:0; margin-top:16px; border-bottom:2px solid #e2e8f0; }
+    .tab {
+      padding:10px 20px; font-size:14px; font-weight:700; color:#64748b; cursor:pointer;
+      border-bottom:2px solid transparent; margin-bottom:-2px; background:none;
+      border-top:0; border-left:0; border-right:0; width:auto; transition:all .2s;
+    }
+    .tab:hover { color:#1967d2; }
+    .tab.active { color:#1967d2; border-bottom-color:#1967d2; }
+    .tab-panel { display:none; padding-top:12px; }
+    .tab-panel.active { display:block; }
+
+    /* Drop zone */
+    .drop-zone {
+      border:2px dashed #d1d5db; border-radius:10px; padding:32px 20px;
+      text-align:center; cursor:pointer; transition:all .2s; background:#f8fafc;
+    }
+    .drop-zone:hover, .drop-zone.dragover { border-color:#1967d2; background:#eff6ff; }
+    .drop-zone-icon { font-size:36px; margin-bottom:8px; display:block; }
+    .drop-zone-text { font-size:14px; color:#475569; }
+    .drop-zone-hint { font-size:12px; color:#94a3b8; margin-top:4px; }
+    .file-selected { margin-top:8px; font-size:13px; color:#16a34a; font-weight:600; }
+    .upload-progress { display:none; margin-top:10px; }
+    .upload-bar { height:6px; background:#e2e8f0; border-radius:3px; overflow:hidden; }
+    .upload-bar-fill { height:100%; background:#1967d2; border-radius:3px; width:0%; transition:width .3s; }
+    .upload-text { font-size:12px; color:#64748b; margin-top:4px; }
+
+    button.main-btn {
+      margin-top:22px; width:100%; border:0; border-radius:8px; padding:13px 16px;
+      background:#1967d2; color:white; font:inherit; font-size:15px; font-weight:800;
+      cursor:pointer; transition:background .2s;
+    }
+    button.main-btn:hover:not(:disabled) { background:#1557b0; }
+    button.main-btn:disabled { background:#94a3b8; cursor:wait; }
+
+    /* Progress */
+    .progress-container { display:none; margin-top:24px; padding:20px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; }
+    .steps { display:flex; gap:4px; justify-content:space-between; position:relative; }
+    .steps::before { content:""; position:absolute; top:15px; left:20px; right:20px; height:2px; background:#e2e8f0; z-index:0; }
+    .step { display:flex; flex-direction:column; align-items:center; flex:1; z-index:1; }
+    .dot {
+      width:30px; height:30px; border-radius:50%; background:#e2e8f0; display:grid;
+      place-items:center; font-size:13px; font-weight:700; color:#94a3b8;
+      transition:all .3s; border:2px solid #e2e8f0;
+    }
+    .step.active .dot { background:#fff; border-color:#1967d2; color:#1967d2; box-shadow:0 0 0 4px rgba(25,103,210,.15); }
+    .step.done .dot { background:#16a34a; border-color:#16a34a; color:#fff; }
+    .step-label { font-size:11px; margin-top:6px; color:#94a3b8; font-weight:600; text-align:center; }
+    .step.active .step-label { color:#1967d2; }
+    .step.done .step-label { color:#16a34a; }
+    #stepMessage { margin-top:12px; font-size:13px; color:#475569; text-align:center; }
+
+    /* Candidates */
+    .candidates-section { display:none; margin-top:20px; }
+    .candidates-section h3 { margin:0 0 14px; font-size:18px; color:#166534; }
+    .candidate-cards { display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:14px; }
+    .candidate-card {
+      border:2px solid #e2e8f0; border-radius:10px; overflow:hidden; background:#fff;
+      transition:all .2s; cursor:pointer;
+    }
+    .candidate-card:hover { border-color:#1967d2; box-shadow:0 4px 16px rgba(25,103,210,.15); }
+    .candidate-card.selected { border-color:#16a34a; box-shadow:0 4px 16px rgba(22,163,74,.2); }
+    .candidate-card video { width:100%; aspect-ratio:9/16; object-fit:cover; background:#000; display:block; }
+    .candidate-info { padding:10px 12px; }
+    .candidate-badge {
+      display:inline-block; padding:2px 8px; border-radius:4px; font-size:11px;
+      font-weight:700; background:#eff6ff; color:#1967d2; margin-bottom:4px;
+    }
+    .candidate-card.selected .candidate-badge { background:#f0fdf4; color:#16a34a; }
+    .candidate-title { font-size:13px; font-weight:700; margin:4px 0 2px; color:#1e293b; }
+    .candidate-reason { font-size:12px; color:#64748b; line-height:1.4; }
+    .candidate-score { font-size:12px; color:#1967d2; font-weight:700; margin-top:4px; }
+    .candidate-actions { display:flex; gap:8px; margin-top:8px; }
+    .candidate-actions a {
+      flex:1; text-align:center; padding:8px; border-radius:6px; font-size:13px;
+      font-weight:700; text-decoration:none; transition:background .2s;
+    }
+    .btn-download { background:#1967d2; color:#fff; }
+    .btn-download:hover { background:#1557b0; }
+
+    /* Error */
+    .error-box {
+      display:none; margin-top:20px; padding:14px 18px; background:#fef2f2;
+      border:1px solid #fca5a5; border-radius:10px; color:#991b1b; font-size:14px; font-weight:600;
+    }
+    pre {
+      display:none; margin:16px 0 0; max-height:220px; overflow:auto; white-space:pre-wrap;
+      background:#0f172a; color:#d1fae5; border-radius:8px; padding:14px; font-size:12px; line-height:1.5;
+    }
+    .toggle-log {
+      display:none; margin-top:12px; background:none; border:1px solid #d1d5db;
+      color:#475569; font-size:12px; padding:6px 14px; cursor:pointer; width:auto; border-radius:6px;
+    }
+    .toggle-log:hover { background:#f1f5f9; }
+
+    @media (max-width:640px) {
+      body { padding:12px; }
+      main { padding:20px; }
+      .row { grid-template-columns:1fr; }
+      h1 { font-size:22px; }
+      .dot { width:24px; height:24px; font-size:11px; }
+      .step-label { font-size:10px; }
+      .candidate-cards { grid-template-columns:1fr; }
+      .drop-zone { padding:20px 14px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
+      <h1 style="flex:1;">Video Kesici</h1>
+      <a href="/download-video" style="font-size:13px;font-weight:700;color:#475569;text-decoration:none;padding:8px 14px;border:1px solid #d1d5db;border-radius:8px;">Indirici</a>
+      <a href="/channels" style="font-size:13px;font-weight:700;color:#475569;text-decoration:none;padding:8px 14px;border:1px solid #d1d5db;border-radius:8px;">Kanallar</a>
+      <a href="/trends" style="font-size:13px;font-weight:700;color:#1967d2;text-decoration:none;padding:8px 14px;border:1px solid #d1d5db;border-radius:8px;">Trend Kesif &rarr;</a>
+    </div>
+    <p class="subtitle">Video yukleyin veya YouTube linki girin, AI en iyi anlari secip dikey klipler uretsin.</p>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="upload">Dosya Yukle</button>
+      <button class="tab" data-tab="youtube">YouTube Linki</button>
+    </div>
+
+    <div class="tab-panel active" id="panel-upload">
+      <div class="drop-zone" id="dropZone">
+        <span class="drop-zone-icon">&#128193;</span>
+        <div class="drop-zone-text">Videoyu surukle birak veya tiklayip sec</div>
+        <div class="drop-zone-hint">MP4, MKV, AVI, MOV, WEBM - Maks 2 GB</div>
+      </div>
+      <input type="file" id="fileInput" accept=".mp4,.mkv,.avi,.mov,.webm,.m4v,.flv,.wmv" style="display:none">
+      <div class="file-selected" id="fileSelected"></div>
+      <div class="upload-progress" id="uploadProgress">
+        <div class="upload-bar"><div class="upload-bar-fill" id="uploadBarFill"></div></div>
+        <div class="upload-text" id="uploadText">Yukleniyor...</div>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="panel-youtube">
+      <label for="videoInput">YouTube linki</label>
+      <input id="videoInput" placeholder="https://www.youtube.com/watch?v=..." autocomplete="off">
+    </div>
+
+    <div class="row">
+      <div>
+        <label for="apiKey">OpenAI API Key</label>
+        <input id="apiKey" type="password" placeholder="Sunucuda kayitliysa bos birakin" autocomplete="off">
+      </div>
+      <div>
+        <label for="clipSeconds">Sure (sn)</label>
+        <input id="clipSeconds" type="number" min="5" max="180" value="30">
+      </div>
+    </div>
+
+    <div class="row" style="grid-template-columns: 1fr 1fr;">
+      <div>
+        <label for="subtitleStyle">Altyazi Stili</label>
+        <select id="subtitleStyle">
+          <option value="bold" selected>Eglenceli - Renkli fiiller (onerilen)</option>
+          <option value="highlight">Parlak - Sari + turuncu fiiller</option>
+          <option value="minimal">Sade - Kucuk + kirmizi fiiller</option>
+          <option value="none">Altyazisiz</option>
+        </select>
+      </div>
+      <div>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:28px;">
+          <input type="checkbox" id="useTemplate" checked style="width:18px;height:18px;accent-color:#ff6b35;">
+          <span>Sablon Modu</span>
+        </label>
+        <small style="color:#888;font-size:11px;">Bulanik arka plan + ortalanmis video + ust yazi</small>
+      </div>
+    </div>
+
+    <div id="captionRow" class="row" style="grid-template-columns: 1fr 1fr;">
+      <div>
+        <label for="captionText">Ust Yazi (Caption)</label>
+        <input id="captionText" type="text" placeholder="Dikkat cekici yazi... (bos = AI baslik)" maxlength="200">
+      </div>
+      <div>
+        <label for="sourceCredit">Kaynak (Telif Korumasi)</label>
+        <input id="sourceCredit" type="text" placeholder="Orn: Kaynak: @kanal_adi" maxlength="200">
+      </div>
+    </div>
+
+    <button class="main-btn" id="startButton">Klipleri olustur</button>
+
+    <div class="progress-container" id="progress">
+      <div class="steps">
+        <div class="step" data-step="1"><span class="dot">1</span><span class="step-label">Hazirlama</span></div>
+        <div class="step" data-step="2"><span class="dot">2</span><span class="step-label">Ses</span></div>
+        <div class="step" data-step="3"><span class="dot">3</span><span class="step-label">Transkript</span></div>
+        <div class="step" data-step="4"><span class="dot">4</span><span class="step-label">AI Analiz</span></div>
+        <div class="step" data-step="5"><span class="dot">5</span><span class="step-label">Kesim</span></div>
+        <div class="step" data-step="6"><span class="dot">6</span><span class="step-label">Bitti</span></div>
+      </div>
+      <div id="stepMessage"></div>
+    </div>
+
+    <div class="candidates-section" id="candidatesSection">
+      <h3>En iyi 3 klip adayi</h3>
+      <div class="candidate-cards" id="candidateCards"></div>
+    </div>
+
+    <div class="error-box" id="errorBox"></div>
+    <button class="toggle-log" id="toggleLog">Isleme logunu goster</button>
+    <pre id="log"></pre>
+  </main>
+
+  <script>
+    const $ = id => document.getElementById(id);
+    const startButton = $("startButton");
+    const logBox = $("log");
+    const progressEl = $("progress");
+    const candidatesSection = $("candidatesSection");
+    const candidateCards = $("candidateCards");
+    const errorBox = $("errorBox");
+    const stepMessage = $("stepMessage");
+    const toggleLog = $("toggleLog");
+
+    const templateCheck = $("useTemplate");
+    const captionRow = $("captionRow");
+    templateCheck.addEventListener("change", () => {
+      captionRow.style.display = templateCheck.checked ? "" : "none";
+    });
+    const dropZone = $("dropZone");
+    const fileInput = $("fileInput");
+    const fileSelected = $("fileSelected");
+    const uploadProgress = $("uploadProgress");
+    const uploadBarFill = $("uploadBarFill");
+    const uploadText = $("uploadText");
+
+    let uploadedFilePath = null;
+    let activeTab = "upload";
+
+    // Tabs
+    document.querySelectorAll(".tab").forEach(tab => {
+      tab.addEventListener("click", () => {
+        document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+        document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+        tab.classList.add("active");
+        $("panel-" + tab.dataset.tab).classList.add("active");
+        activeTab = tab.dataset.tab;
+      });
+    });
+
+    // Drop zone
+    dropZone.addEventListener("click", () => fileInput.click());
+    dropZone.addEventListener("dragover", e => { e.preventDefault(); dropZone.classList.add("dragover"); });
+    dropZone.addEventListener("dragleave", () => dropZone.classList.remove("dragover"));
+    dropZone.addEventListener("drop", e => {
+      e.preventDefault(); dropZone.classList.remove("dragover");
+      if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+    });
+    fileInput.addEventListener("change", () => { if (fileInput.files.length) handleFile(fileInput.files[0]); });
+
+    function handleFile(file) {
+      const ext = file.name.split(".").pop().toLowerCase();
+      const allowed = ["mp4","mkv","avi","mov","webm","m4v","flv","wmv"];
+      if (!allowed.includes(ext)) { showError("Desteklenmeyen format."); return; }
+      if (file.size > 2*1024*1024*1024) { showError("Dosya 2 GB'dan buyuk."); return; }
+
+      errorBox.style.display = "none";
+      fileSelected.textContent = `${file.name} (${(file.size/1024/1024).toFixed(1)} MB)`;
+      uploadedFilePath = null;
+      uploadProgress.style.display = "block";
+      uploadBarFill.style.width = "0%";
+      uploadText.textContent = "Yukleniyor...";
+
+      const fd = new FormData();
+      fd.append("file", file);
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/upload");
+      xhr.upload.addEventListener("progress", e => {
+        if (e.lengthComputable) {
+          const pct = Math.round(e.loaded/e.total*100);
+          uploadBarFill.style.width = pct+"%";
+          uploadText.textContent = pct+"% yuklendi";
+        }
+      });
+      xhr.addEventListener("load", () => {
+        if (xhr.status === 200) {
+          const d = JSON.parse(xhr.responseText);
+          uploadedFilePath = d.path;
+          uploadBarFill.style.width = "100%";
+          uploadText.textContent = "Yukleme tamamlandi!";
+        } else {
+          uploadProgress.style.display = "none"; fileSelected.textContent = "";
+          showError(JSON.parse(xhr.responseText).error || "Yukleme basarisiz.");
+        }
+      });
+      xhr.addEventListener("error", () => {
+        uploadProgress.style.display = "none"; fileSelected.textContent = "";
+        showError("Baglanti hatasi.");
+      });
+      xhr.send(fd);
+    }
+
+    function showError(msg) { errorBox.textContent = msg; errorBox.style.display = "block"; }
+
+    toggleLog.addEventListener("click", () => {
+      const vis = logBox.style.display === "block";
+      logBox.style.display = vis ? "none" : "block";
+      toggleLog.textContent = vis ? "Isleme logunu goster" : "Logu gizle";
+    });
+
+    function resetUI() {
+      candidatesSection.style.display = "none";
+      candidateCards.innerHTML = "";
+      errorBox.style.display = "none";
+      logBox.style.display = "none"; logBox.textContent = "";
+      toggleLog.style.display = "none"; toggleLog.textContent = "Isleme logunu goster";
+      progressEl.style.display = "block";
+      document.querySelectorAll(".step").forEach(el => el.classList.remove("done","active"));
+      stepMessage.textContent = "";
+    }
+
+    function updateSteps(stepStr) {
+      if (!stepStr) return;
+      const m = stepStr.match(/(\d+)\/(\d+)/);
+      if (!m) return;
+      const cur = parseInt(m[1]);
+      document.querySelectorAll(".step").forEach(el => {
+        const s = parseInt(el.dataset.step);
+        el.classList.toggle("done", s < cur);
+        el.classList.toggle("active", s === cur);
+      });
+    }
+
+    function markAllDone() {
+      document.querySelectorAll(".step").forEach(el => { el.classList.add("done"); el.classList.remove("active"); });
+    }
+
+    const VIRAL_LABELS = {
+      hook: "Hook", catisma: "Catisma", duygu: "Duygu", surpriz: "Surpriz", replik: "Replik"
+    };
+
+    function renderCandidates(clipList, candidates) {
+      candidateCards.innerHTML = "";
+      clipList.forEach((clip, i) => {
+        const cand = (candidates && candidates[i]) || {};
+        const card = document.createElement("div");
+        card.className = "candidate-card";
+
+        const viralType = cand.viral_type || "";
+        const viralLabel = VIRAL_LABELS[viralType] || viralType || "Klip";
+        const score = cand.score || "?";
+        const title = cand.title || clip.label;
+        const reason = cand.reason || "";
+
+        card.innerHTML = `
+          <video src="${clip.preview_url}" controls playsinline preload="metadata"></video>
+          <div class="candidate-info">
+            <span class="candidate-badge">${viralLabel}</span>
+            <span class="candidate-score">Puan: ${score}/10</span>
+            <div class="candidate-title">${title}</div>
+            <div class="candidate-reason">${reason}</div>
+            <div class="candidate-actions">
+              <a href="${clip.download_url}" class="btn-download">Indir</a>
+            </div>
+          </div>
+        `;
+        candidateCards.appendChild(card);
+      });
+      candidatesSection.style.display = "block";
+    }
+
+    async function pollJob(jobId) {
+      let response;
+      try { response = await fetch(`/api/jobs/${jobId}`); }
+      catch { setTimeout(() => pollJob(jobId), 3000); return; }
+      const job = await response.json();
+
+      if (job.step) updateSteps(job.step);
+      stepMessage.textContent = job.message || "";
+
+      if (job.log) {
+        toggleLog.style.display = "block";
+        logBox.textContent = job.log;
+        logBox.scrollTop = logBox.scrollHeight;
+      }
+
+      if (job.status === "done") {
+        startButton.disabled = false;
+        markAllDone();
+        stepMessage.textContent = "";
+        if (job.clip_list && job.clip_list.length > 0) {
+          renderCandidates(job.clip_list, job.candidates);
+        }
+        return;
+      }
+
+      if (job.status === "failed") {
+        startButton.disabled = false;
+        progressEl.style.display = "none";
+        showError(job.message || "Islem basarisiz oldu.");
+        return;
+      }
+
+      setTimeout(() => pollJob(jobId), 2000);
+    }
+
+    startButton.addEventListener("click", async () => {
+      let videoInput;
+      if (activeTab === "upload") {
+        if (!uploadedFilePath) { showError("Lutfen once bir video yukleyin."); return; }
+        videoInput = uploadedFilePath;
+      } else {
+        videoInput = $("videoInput").value.trim();
+        if (!videoInput) { showError("Lutfen bir YouTube linki girin."); return; }
+      }
+
+      startButton.disabled = true;
+      resetUI();
+
+      const payload = {
+        video_input: videoInput,
+        api_key: $("apiKey").value,
+        clip_seconds: Number($("clipSeconds").value || 30),
+        subtitle_style: $("subtitleStyle").value,
+        use_template: $("useTemplate").checked,
+        caption: $("captionText").value.trim(),
+        source_credit: $("sourceCredit").value.trim()
+      };
+
+      try {
+        const response = await fetch("/api/jobs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Islem baslatilamadi.");
+        pollJob(data.job_id);
+      } catch (error) {
+        progressEl.style.display = "none";
+        showError(error.message);
+        startButton.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
