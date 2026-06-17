@@ -22,6 +22,11 @@ from publisher import (
     load_publish_config, save_publish_config, publish_video,
     get_publish_log,
 )
+from channels import (
+    load_channels, save_channels, add_channel, update_channel, remove_channel,
+    get_all_channels, get_channels_by_category, add_to_queue, get_queue,
+    CATEGORY_PRESETS,
+)
 
 
 PROJECT_DIR = Path(__file__).resolve().parent
@@ -518,6 +523,195 @@ def api_list_outputs():
             "created": datetime.fromtimestamp(f.stat().st_mtime, tz=timezone.utc).strftime("%Y-%m-%d %H:%M"),
         })
     return jsonify(files[:50])
+
+
+# ── Channels (Multi-Account) API ─────────────────────────────────────
+
+
+@app.get("/channels")
+def channels_page():
+    return render_template("channels.html")
+
+
+@app.get("/api/channels")
+def api_list_channels():
+    channels = get_all_channels()
+    safe = []
+    for ch in channels:
+        c = dict(ch)
+        creds = c.get("credentials", {})
+        c["credentials"] = {k: ("***" + v[-4:] if len(v) > 8 else "***") for k, v in creds.items() if v}
+        safe.append(c)
+    return jsonify(safe)
+
+
+@app.post("/api/channels")
+def api_add_channel():
+    payload = request.get_json(force=True)
+    name = str(payload.get("name", "")).strip()[:50]
+    category = str(payload.get("category", "")).strip()
+    platform = str(payload.get("platform", "")).strip()
+    credentials = payload.get("credentials", {})
+
+    if not name:
+        return jsonify({"error": "Kanal adi gerekli."}), 400
+    if platform not in ("youtube", "tiktok", "instagram"):
+        return jsonify({"error": "Platform: youtube, tiktok veya instagram olmali."}), 400
+    if not isinstance(credentials, dict):
+        return jsonify({"error": "Credentials dict olmali."}), 400
+
+    preset = CATEGORY_PRESETS.get(category, {})
+
+    channel = add_channel(
+        name=name,
+        category=category,
+        platform=platform,
+        credentials=credentials,
+        posts_per_day=int(payload.get("posts_per_day", 3)),
+        post_hours=payload.get("post_hours", [9, 13, 17, 20]),
+        tags=payload.get("tags") or preset.get("tags", ["shorts", "viral"]),
+        description_template=payload.get("description_template") or preset.get("description", "{title}"),
+    )
+    return jsonify(channel)
+
+
+@app.put("/api/channels/<channel_id>")
+def api_update_channel(channel_id: str):
+    payload = request.get_json(force=True)
+    result = update_channel(channel_id, payload)
+    if not result:
+        return jsonify({"error": "Kanal bulunamadi."}), 404
+    return jsonify(result)
+
+
+@app.delete("/api/channels/<channel_id>")
+def api_delete_channel(channel_id: str):
+    if remove_channel(channel_id):
+        return jsonify({"ok": True})
+    return jsonify({"error": "Kanal bulunamadi."}), 404
+
+
+@app.post("/api/channels/queue")
+def api_queue_video():
+    payload = request.get_json(force=True)
+    video_path = str(payload.get("video_path", "")).strip()
+    title = str(payload.get("title", "")).strip()[:200]
+    category = str(payload.get("category", "")).strip()
+    channel_ids = payload.get("channel_ids")
+
+    if not video_path or not Path(video_path).exists():
+        return jsonify({"error": "Gecerli bir video dosyasi gerekli."}), 400
+    if not title:
+        return jsonify({"error": "Baslik gerekli."}), 400
+
+    item = add_to_queue(video_path, title, category, channel_ids)
+    return jsonify(item)
+
+
+@app.get("/api/channels/queue")
+def api_get_queue():
+    return jsonify(get_queue(50))
+
+
+@app.get("/api/channels/categories")
+def api_channel_categories():
+    return jsonify(CATEGORY_PRESETS)
+
+
+# ── Video Downloader (yt-dlp universal) ──────────────────────────────
+
+DOWNLOAD_DIR = Path(os.getenv("DOWNLOAD_DIR", PROJECT_DIR / "downloads")).resolve()
+_URL_RE = re.compile(r"^https?://\S+$")
+_DOWNLOAD_JOBS: dict[str, dict] = {}
+
+
+@app.get("/download-video")
+def download_video_page():
+    return render_template("downloader.html")
+
+
+@app.post("/api/download-video")
+def api_download_video():
+    payload = request.get_json(force=True)
+    url = str(payload.get("url", "")).strip()
+
+    if not url or not _URL_RE.match(url):
+        return jsonify({"error": "Gecerli bir video linki girin."}), 400
+
+    if any(c in url for c in (";", "|", "&", "`", "$", "\n")):
+        return jsonify({"error": "Gecersiz karakter."}), 400
+
+    dl_id = uuid.uuid4().hex[:12]
+    DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    _DOWNLOAD_JOBS[dl_id] = {"status": "downloading", "progress": "", "file": None}
+
+    thread = threading.Thread(target=_run_download, args=(dl_id, url), daemon=True)
+    thread.start()
+
+    return jsonify({"dl_id": dl_id})
+
+
+def _run_download(dl_id: str, url: str) -> None:
+    output_template = str(DOWNLOAD_DIR / f"{dl_id}_%(title).60s.%(ext)s")
+    cookies_file = PROJECT_DIR / "cookies.txt"
+
+    cmd = [
+        "yt-dlp",
+        "--no-playlist",
+        "-f", "bv*[height<=720][ext=mp4]+ba[ext=m4a]/b[ext=mp4][height<=720]/best[height<=720]/best",
+        "--merge-output-format", "mp4",
+        "-o", output_template,
+        "--no-overwrites",
+        "--max-filesize", "500M",
+    ]
+    if cookies_file.exists():
+        cmd.extend(["--cookies", str(cookies_file)])
+    cmd.append(url)
+
+    try:
+        process = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, encoding="utf-8", errors="replace",
+        )
+        lines = []
+        assert process.stdout is not None
+        for line in process.stdout:
+            lines.append(line.strip())
+            if "[download]" in line and "%" in line:
+                _DOWNLOAD_JOBS[dl_id]["progress"] = line.strip()
+
+        process.wait()
+
+        mp4_files = sorted(DOWNLOAD_DIR.glob(f"{dl_id}_*.mp4"), key=lambda p: p.stat().st_mtime, reverse=True)
+        if process.returncode == 0 and mp4_files:
+            _DOWNLOAD_JOBS[dl_id] = {"status": "done", "file": str(mp4_files[0]), "filename": mp4_files[0].name}
+        else:
+            _DOWNLOAD_JOBS[dl_id] = {"status": "failed", "error": "\n".join(lines[-10:])}
+    except Exception as e:
+        _DOWNLOAD_JOBS[dl_id] = {"status": "failed", "error": str(e)}
+
+
+@app.get("/api/download-video/<dl_id>")
+def api_download_video_status(dl_id: str):
+    if not _SAFE_JOB_ID_RE.match(dl_id):
+        return jsonify({"error": "Gecersiz ID."}), 400
+    job = _DOWNLOAD_JOBS.get(dl_id)
+    if not job:
+        return jsonify({"error": "Bulunamadi."}), 404
+    resp = dict(job)
+    if resp.get("file"):
+        resp["download_url"] = f"/api/download-video/{dl_id}/file"
+    return jsonify(resp)
+
+
+@app.get("/api/download-video/<dl_id>/file")
+def api_download_video_file(dl_id: str):
+    if not _SAFE_JOB_ID_RE.match(dl_id):
+        return jsonify({"error": "Gecersiz ID."}), 400
+    job = _DOWNLOAD_JOBS.get(dl_id)
+    if not job or job.get("status") != "done" or not job.get("file"):
+        return jsonify({"error": "Dosya hazir degil."}), 404
+    return send_file(job["file"], as_attachment=True, download_name=job.get("filename", "video.mp4"))
 
 
 if __name__ == "__main__":

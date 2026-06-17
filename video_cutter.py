@@ -27,41 +27,41 @@ NUM_CANDIDATES = 3
 SUBTITLE_STYLES = {
     "bold": {
         "fontname": "Bangers",
-        "fontsize": 64,
+        "fontsize": 96,
         "primary_color": "&H00FFFFFF",  # white
         "outline_color": "&H00000000",  # black
         "back_color": "&H80000000",
         "bold": 0,
-        "outline": 4,
-        "shadow": 2,
+        "outline": 5,
+        "shadow": 3,
         "alignment": 2,  # bottom center
-        "margin_v": 120,
+        "margin_v": 140,
         "verb_color": "&H005FFFED",  # vibrant cyan-green (BGR)
     },
     "highlight": {
         "fontname": "Bangers",
-        "fontsize": 68,
+        "fontsize": 100,
         "primary_color": "&H0000FFFF",  # yellow
         "outline_color": "&H00000000",
         "back_color": "&H80000000",
         "bold": 0,
-        "outline": 4,
+        "outline": 5,
         "shadow": 0,
         "alignment": 5,  # center
-        "margin_v": 50,
+        "margin_v": 60,
         "verb_color": "&H003CFFFF",  # hot orange (BGR)
     },
     "minimal": {
         "fontname": "Bangers",
-        "fontsize": 48,
+        "fontsize": 78,
         "primary_color": "&H00FFFFFF",
         "outline_color": "&H00000000",
         "back_color": "&H00000000",
         "bold": 0,
-        "outline": 2,
+        "outline": 3,
         "shadow": 1,
         "alignment": 2,
-        "margin_v": 80,
+        "margin_v": 100,
         "verb_color": "&H006464FF",  # warm red (BGR)
     },
 }
@@ -548,7 +548,7 @@ def words_for_clip(words: list[dict], start: float, end: float) -> list[dict]:
     return clip_words
 
 
-def group_words_into_phrases(words: list[dict], max_words: int = 4, max_gap: float = 0.8) -> list[dict]:
+def group_words_into_phrases(words: list[dict], max_words: int = 3, max_gap: float = 0.7) -> list[dict]:
     phrases = []
     current: list[dict] = []
 
@@ -928,7 +928,7 @@ def main() -> None:
 
                 if use_subs:
                     clip_words = words_for_clip(words, start, end)
-                    phrases = group_words_into_phrases(clip_words, max_words=4)
+                    phrases = group_words_into_phrases(clip_words, max_words=3)
                     if phrases:
                         ass_content = generate_ass_subtitles(
                             phrases, args.subtitle_style, target_w, args.target_height
@@ -948,7 +948,7 @@ def main() -> None:
                 cut_vertical_video(input_path, raw_out, start, end, args.target_height)
 
                 clip_words = words_for_clip(words, start, end)
-                phrases = group_words_into_phrases(clip_words, max_words=4)
+                phrases = group_words_into_phrases(clip_words, max_words=3)
 
                 if phrases:
                     ass_content = generate_ass_subtitles(

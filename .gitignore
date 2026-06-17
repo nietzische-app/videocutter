@@ -16,3 +16,5 @@ schedule_log.json
 schedule_config.json
 publish_log.json
 publish_config.json
+channels_config.json
+downloads/

@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kanallar - Video Kesici</title>
+  <style>
+    :root { color-scheme:light; font-family:Inter,Segoe UI,Arial,sans-serif; background:#f5f7fb; color:#172033; }
+    body { margin:0; min-height:100vh; padding:28px; }
+    .container { max-width:1100px; margin:0 auto; }
+    .nav { display:flex; gap:12px; margin-bottom:24px; align-items:center; flex-wrap:wrap; }
+    .nav a { text-decoration:none; padding:8px 16px; border-radius:8px; font-weight:700; font-size:14px; color:#475569; transition:all .2s; }
+    .nav a:hover { background:#e2e8f0; }
+    .nav a.active { background:#1967d2; color:#fff; }
+
+    .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+    @media(max-width:768px) { .grid-2 { grid-template-columns:1fr; } }
+
+    .card { background:#fff; border:1px solid #d9e1ef; border-radius:12px; box-shadow:0 6px 24px rgba(24,39,75,.08); padding:24px; margin-bottom:20px; }
+    .card h2 { margin:0 0 16px; font-size:20px; }
+    .card h3 { margin:0 0 12px; font-size:16px; color:#374151; }
+
+    label { display:block; margin:10px 0 4px; font-weight:700; font-size:13px; color:#374151; }
+    input, select, textarea {
+      width:100%; box-sizing:border-box; border:1px solid #d1d5db; border-radius:8px;
+      padding:10px 12px; font:inherit; font-size:14px; background:#fff;
+    }
+    input:focus, select:focus { outline:none; border-color:#1967d2; box-shadow:0 0 0 3px rgba(25,103,210,.12); }
+
+    .btn { border:0; border-radius:8px; padding:10px 18px; font:inherit; font-size:14px; font-weight:700; cursor:pointer; transition:all .2s; }
+    .btn-primary { background:#1967d2; color:#fff; }
+    .btn-primary:hover:not(:disabled) { background:#1557b0; }
+    .btn-danger { background:#dc2626; color:#fff; }
+    .btn-danger:hover { background:#b91c1c; }
+    .btn-outline { background:#fff; color:#475569; border:1px solid #d1d5db; }
+    .btn-outline:hover { background:#f1f5f9; }
+    .btn-sm { padding:6px 12px; font-size:12px; }
+    .btn-block { width:100%; margin-top:14px; }
+
+    .tag { display:inline-block; padding:3px 8px; border-radius:5px; font-size:11px; font-weight:700; }
+    .tag-yt { background:#fef2f2; color:#dc2626; }
+    .tag-tt { background:#f0f9ff; color:#0284c7; }
+    .tag-ig { background:#fdf2f8; color:#db2777; }
+    .tag-green { background:#f0fdf4; color:#16a34a; }
+    .tag-gray { background:#f1f5f9; color:#64748b; }
+
+    .channel-card {
+      border:1px solid #e2e8f0; border-radius:10px; padding:16px; margin-bottom:12px; transition:all .2s;
+    }
+    .channel-card.enabled { border-left:3px solid #16a34a; }
+    .channel-card.disabled { border-left:3px solid #94a3b8; opacity:.7; }
+    .channel-header { display:flex; align-items:center; gap:10px; margin-bottom:6px; }
+    .channel-header h4 { margin:0; font-size:14px; flex:1; }
+    .channel-meta { font-size:12px; color:#64748b; display:flex; gap:10px; flex-wrap:wrap; }
+    .channel-stats { font-size:11px; color:#94a3b8; margin-top:6px; }
+    .channel-actions { display:flex; gap:6px; margin-top:8px; }
+
+    .row-inline { display:flex; gap:10px; align-items:end; }
+    .row-inline > div { flex:1; }
+
+    .empty { text-align:center; padding:30px 20px; color:#94a3b8; font-size:14px; }
+
+    .queue-item { padding:10px; border-bottom:1px solid #f1f5f9; font-size:13px; }
+    .queue-item:last-child { border:0; }
+
+    .info-box { padding:12px 16px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; font-size:13px; color:#1e40af; margin-bottom:16px; line-height:1.5; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="nav">
+    <a href="/">Video Kesici</a>
+    <a href="/trends">Trend Kesif</a>
+    <a href="/publish">Paylasim</a>
+    <a href="/download-video">Indirici</a>
+    <a href="/channels" class="active">Kanallar</a>
+  </div>
+
+  <div class="grid-2">
+    <!-- Left: Channels List -->
+    <div>
+      <div class="card">
+        <h2>Kanallarim</h2>
+        <p style="font-size:13px;color:#64748b;margin:0 0 16px;">Her kategori icin ayri kanal/hesap ekle, videolar otomatik dagitilsin.</p>
+        <div id="channelList"><div class="empty">Henuz kanal eklenmemis.</div></div>
+      </div>
+
+      <div class="card">
+        <h3>Paylasim Kuyrugu</h3>
+        <div id="queueList" style="max-height:300px;overflow-y:auto;">
+          <div class="empty">Kuyrukta video yok.</div>
+        </div>
+        <button class="btn btn-outline btn-sm" style="margin-top:10px;" onclick="loadQueue()">Yenile</button>
+      </div>
+    </div>
+
+    <!-- Right: Add Channel Form -->
+    <div>
+      <div class="card">
+        <h2>Kanal Ekle</h2>
+
+        <div class="info-box">
+          Her kanal bir platform hesabina karsilik gelir. Ayni kategoride birden fazla kanal (farkli platformlar) ekleyebilirsin.
+          Video o kategoriye ait kanallara otomatik dagitilir.
+        </div>
+
+        <label>Kanal Adi</label>
+        <input id="chName" type="text" placeholder="Orn: Gaming Shorts TR">
+
+        <div class="row-inline">
+          <div>
+            <label>Kategori</label>
+            <select id="chCategory">
+              <option value="gaming">Gaming</option>
+              <option value="komedi">Komedi</option>
+              <option value="spor">Spor</option>
+              <option value="muzik">Muzik</option>
+              <option value="teknoloji">Teknoloji</option>
+              <option value="film">Film & Dizi</option>
+              <option value="eglence" selected>Eglence</option>
+            </select>
+          </div>
+          <div>
+            <label>Platform</label>
+            <select id="chPlatform">
+              <option value="youtube">YouTube Shorts</option>
+              <option value="tiktok">TikTok</option>
+              <option value="instagram">Instagram Reels</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="row-inline">
+          <div>
+            <label>Gunde Kac Post</label>
+            <input id="chPostsDay" type="number" value="3" min="1" max="10">
+          </div>
+          <div>
+            <label>Post Saatleri (virgul ile)</label>
+            <input id="chPostHours" type="text" value="9, 13, 17, 20" placeholder="9, 13, 17, 20">
+          </div>
+        </div>
+
+        <div id="credFields"></div>
+
+        <label>Etiketler (virgul ile)</label>
+        <input id="chTags" type="text" placeholder="Kategoriye gore otomatik doldurulur">
+
+        <button class="btn btn-primary btn-block" id="addChannelBtn">Kanal Ekle</button>
+      </div>
+
+      <div class="card">
+        <h3>Kuyruga Video Ekle</h3>
+        <p style="font-size:12px;color:#64748b;margin:0 0 12px;">Kliplenmis bir videoyu secili kategorideki tum kanallara dagit.</p>
+
+        <label>Video Dosyasi</label>
+        <select id="queueVideo" style="font-size:13px;"></select>
+
+        <label>Baslik</label>
+        <input id="queueTitle" type="text" placeholder="Video basligi">
+
+        <label>Kategori</label>
+        <select id="queueCategory">
+          <option value="gaming">Gaming</option>
+          <option value="komedi">Komedi</option>
+          <option value="spor">Spor</option>
+          <option value="muzik">Muzik</option>
+          <option value="teknoloji">Teknoloji</option>
+          <option value="film">Film & Dizi</option>
+          <option value="eglence" selected>Eglence</option>
+        </select>
+
+        <button class="btn btn-primary btn-block" id="queueBtn">Kuyruga Ekle</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const $ = id => document.getElementById(id);
+  function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+
+  const platformTags = { youtube: "tag-yt", tiktok: "tag-tt", instagram: "tag-ig" };
+  const platformNames = { youtube: "YouTube", tiktok: "TikTok", instagram: "Instagram" };
+
+  // Credential fields change based on platform
+  function updateCredFields() {
+    const p = $("chPlatform").value;
+    let html = "";
+    if (p === "youtube") {
+      html = `<label>OAuth2 Access Token</label>
+              <input id="credToken" type="password" placeholder="ya29.xxx">
+              <small style="color:#94a3b8;font-size:11px;">Google Cloud Console > OAuth2 credentials</small>`;
+    } else if (p === "tiktok") {
+      html = `<label>Access Token</label>
+              <input id="credToken" type="password" placeholder="TikTok Content Posting API token">
+              <small style="color:#94a3b8;font-size:11px;">TikTok Developer Portal</small>`;
+    } else if (p === "instagram") {
+      html = `<label>Access Token</label>
+              <input id="credToken" type="password" placeholder="Facebook Graph API token">
+              <label>Instagram User ID</label>
+              <input id="credUserId" type="text" placeholder="17841400...">
+              <small style="color:#94a3b8;font-size:11px;">Meta Developer Portal</small>`;
+    }
+    $("credFields").innerHTML = html;
+  }
+
+  function getCredentials() {
+    const p = $("chPlatform").value;
+    const token = document.getElementById("credToken")?.value?.trim() || "";
+    if (p === "instagram") {
+      return { access_token: token, user_id: document.getElementById("credUserId")?.value?.trim() || "" };
+    }
+    return { access_token: token };
+  }
+
+  // Load channels
+  async function loadChannels() {
+    try {
+      const res = await fetch("/api/channels");
+      const channels = await res.json();
+      const container = $("channelList");
+
+      if (!channels.length) {
+        container.innerHTML = '<div class="empty">Henuz kanal eklenmemis. Sagdan yeni kanal ekleyin.</div>';
+        return;
+      }
+
+      container.innerHTML = channels.map(ch => {
+        const pTag = platformTags[ch.platform] || "tag-gray";
+        const enabled = ch.enabled !== false;
+        return `
+          <div class="channel-card ${enabled ? 'enabled' : 'disabled'}">
+            <div class="channel-header">
+              <h4>${esc(ch.name)}</h4>
+              <span class="tag ${pTag}">${platformNames[ch.platform] || ch.platform}</span>
+              <span class="tag tag-gray">${esc(ch.category)}</span>
+              ${enabled ? '<span class="tag tag-green">Aktif</span>' : '<span class="tag tag-gray">Pasif</span>'}
+            </div>
+            <div class="channel-meta">
+              <span>Gunde ${ch.posts_per_day} post</span>
+              <span>Saatler: ${(ch.post_hours || []).join(", ")}</span>
+            </div>
+            <div class="channel-stats">
+              Toplam: ${ch.stats?.total_posted || 0} paylasim
+              ${ch.stats?.last_posted ? '| Son: ' + ch.stats.last_posted : ''}
+            </div>
+            <div class="channel-actions">
+              <button class="btn btn-outline btn-sm" onclick="toggleChannel('${ch.id}', ${!enabled})">
+                ${enabled ? 'Durdur' : 'Etkinlestir'}
+              </button>
+              <button class="btn btn-danger btn-sm" onclick="deleteChannel('${ch.id}', '${esc(ch.name)}')">Sil</button>
+            </div>
+          </div>`;
+      }).join("");
+    } catch(e) { console.error(e); }
+  }
+
+  async function addChannel() {
+    const name = $("chName").value.trim();
+    if (!name) { alert("Kanal adi girin."); return; }
+
+    const tags = $("chTags").value.split(",").map(t => t.trim()).filter(Boolean);
+    const postHours = $("chPostHours").value.split(",").map(h => parseInt(h.trim())).filter(h => !isNaN(h));
+
+    const body = {
+      name,
+      category: $("chCategory").value,
+      platform: $("chPlatform").value,
+      credentials: getCredentials(),
+      posts_per_day: Number($("chPostsDay").value || 3),
+      post_hours: postHours.length ? postHours : [9, 13, 17, 20],
+      tags: tags.length ? tags : undefined,
+    };
+
+    try {
+      const res = await fetch("/api/channels", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) { alert(data.error || "Hata"); return; }
+      $("chName").value = "";
+      loadChannels();
+    } catch(e) { alert("Hata: " + e.message); }
+  }
+
+  async function toggleChannel(id, enabled) {
+    await fetch(`/api/channels/${id}`, {
+      method: "PUT",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({enabled}),
+    });
+    loadChannels();
+  }
+
+  async function deleteChannel(id, name) {
+    if (!confirm(`"${name}" kanalini silmek istediginize emin misiniz?`)) return;
+    await fetch(`/api/channels/${id}`, {method: "DELETE"});
+    loadChannels();
+  }
+
+  // Queue
+  async function loadOutputFiles() {
+    try {
+      const res = await fetch("/api/outputs");
+      const files = await res.json();
+      const sel = $("queueVideo");
+      sel.innerHTML = files.map(f =>
+        `<option value="${esc(f.path)}">${esc(f.name)} (${f.size_mb}MB)</option>`
+      ).join("") || '<option value="">Klip yok</option>';
+    } catch(e) { console.error(e); }
+  }
+
+  async function loadQueue() {
+    try {
+      const res = await fetch("/api/channels/queue");
+      const queue = await res.json();
+      const container = $("queueList");
+
+      if (!queue.length) {
+        container.innerHTML = '<div class="empty">Kuyrukta video yok.</div>';
+        return;
+      }
+
+      container.innerHTML = queue.reverse().map(item => {
+        const results = Object.entries(item.results || {});
+        let statusHtml = "";
+        if (results.length) {
+          statusHtml = results.map(([chId, r]) =>
+            `<span class="tag ${r.status === 'done' ? 'tag-green' : 'tag-gray'}">${chId.slice(0,4)}: ${r.status}</span>`
+          ).join(" ");
+        }
+        return `<div class="queue-item">
+          <div style="font-weight:600;">${esc(item.title)}</div>
+          <div style="font-size:11px;color:#94a3b8;">
+            <span class="tag tag-gray">${item.category}</span>
+            <span class="tag ${item.status === 'done' ? 'tag-green' : 'tag-gray'}">${item.status}</span>
+            ${statusHtml}
+          </div>
+          <div style="font-size:11px;color:#94a3b8;">${item.created_at || ""}</div>
+        </div>`;
+      }).join("");
+    } catch(e) { console.error(e); }
+  }
+
+  async function queueVideo() {
+    const path = $("queueVideo").value;
+    const title = $("queueTitle").value.trim();
+    const category = $("queueCategory").value;
+
+    if (!path) { alert("Video secin."); return; }
+    if (!title) { alert("Baslik girin."); return; }
+
+    try {
+      const res = await fetch("/api/channels/queue", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({video_path: path, title, category}),
+      });
+      const data = await res.json();
+      if (!res.ok) { alert(data.error || "Hata"); return; }
+      alert("Kuyruga eklendi! Hedef kanal sayisi: " + (data.target_channels?.length || 0));
+      $("queueTitle").value = "";
+      loadQueue();
+    } catch(e) { alert("Hata: " + e.message); }
+  }
+
+  // Auto-fill tags based on category
+  async function loadCategoryPresets() {
+    try {
+      const res = await fetch("/api/channels/categories");
+      window._presets = await res.json();
+      updateTagsFromCategory();
+    } catch(e) {}
+  }
+
+  function updateTagsFromCategory() {
+    const cat = $("chCategory").value;
+    if (window._presets && window._presets[cat]) {
+      $("chTags").value = window._presets[cat].tags.join(", ");
+    }
+  }
+
+  // Events
+  $("chPlatform").addEventListener("change", updateCredFields);
+  $("chCategory").addEventListener("change", updateTagsFromCategory);
+  $("addChannelBtn").addEventListener("click", addChannel);
+  $("queueBtn").addEventListener("click", queueVideo);
+
+  // Init
+  updateCredFields();
+  loadChannels();
+  loadQueue();
+  loadOutputFiles();
+  loadCategoryPresets();
+</script>
+</body>
+</html>

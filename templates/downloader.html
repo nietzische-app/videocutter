@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Video Indirici - Video Kesici</title>
+  <style>
+    :root { color-scheme:light; font-family:Inter,Segoe UI,Arial,sans-serif; background:#f5f7fb; color:#172033; }
+    body { margin:0; min-height:100vh; display:grid; place-items:center; padding:28px; }
+    .container { width:min(640px,100%); }
+
+    .nav { display:flex; gap:12px; margin-bottom:24px; align-items:center; }
+    .nav a { text-decoration:none; padding:8px 16px; border-radius:8px; font-weight:700; font-size:14px; color:#475569; transition:all .2s; }
+    .nav a:hover { background:#e2e8f0; }
+    .nav a.active { background:#1967d2; color:#fff; }
+
+    .card {
+      background:#fff; border:1px solid #d9e1ef; border-radius:12px;
+      box-shadow:0 18px 60px rgba(24,39,75,.12); padding:32px;
+    }
+    h1 { margin:0 0 4px; font-size:24px; }
+    .subtitle { margin:0 0 20px; font-size:14px; color:#64748b; }
+
+    label { display:block; margin:14px 0 6px; font-weight:700; font-size:13px; color:#374151; }
+    input {
+      width:100%; box-sizing:border-box; border:1px solid #d1d5db; border-radius:8px;
+      padding:12px 14px; font:inherit; font-size:15px; background:#fff; transition:border-color .2s;
+    }
+    input:focus { outline:none; border-color:#1967d2; box-shadow:0 0 0 3px rgba(25,103,210,.12); }
+
+    .btn {
+      width:100%; margin-top:16px; border:0; border-radius:8px; padding:14px 16px;
+      background:#1967d2; color:white; font:inherit; font-size:15px; font-weight:800;
+      cursor:pointer; transition:background .2s;
+    }
+    .btn:hover:not(:disabled) { background:#1557b0; }
+    .btn:disabled { background:#94a3b8; cursor:wait; }
+
+    .status-box {
+      display:none; margin-top:20px; padding:16px; background:#f8fafc;
+      border:1px solid #e2e8f0; border-radius:10px;
+    }
+    .status-text { font-size:14px; color:#475569; margin-bottom:8px; }
+    .progress-bar { height:6px; background:#e2e8f0; border-radius:3px; overflow:hidden; }
+    .progress-fill { height:100%; background:#1967d2; border-radius:3px; width:0%; transition:width .3s; }
+
+    .result-box {
+      display:none; margin-top:20px; padding:20px; background:#f0fdf4;
+      border:1px solid #86efac; border-radius:10px; text-align:center;
+    }
+    .result-box a {
+      display:inline-block; margin-top:10px; padding:12px 28px; background:#16a34a; color:#fff;
+      border-radius:8px; text-decoration:none; font-weight:700; font-size:15px; transition:background .2s;
+    }
+    .result-box a:hover { background:#15803d; }
+
+    .error-box {
+      display:none; margin-top:20px; padding:14px 18px; background:#fef2f2;
+      border:1px solid #fca5a5; border-radius:10px; color:#991b1b; font-size:14px; font-weight:600;
+    }
+
+    .supported { margin-top:16px; font-size:12px; color:#94a3b8; line-height:1.6; }
+    .supported span { display:inline-block; padding:2px 8px; background:#f1f5f9; border-radius:4px; margin:2px; font-weight:600; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="nav">
+    <a href="/">Video Kesici</a>
+    <a href="/trends">Trend Kesif</a>
+    <a href="/publish">Paylasim</a>
+    <a href="/download-video" class="active">Indirici</a>
+    <a href="/channels">Kanallar</a>
+  </div>
+
+  <div class="card">
+    <h1>Video Indirici</h1>
+    <p class="subtitle">Herhangi bir video linkini yapistir, MP4 olarak indir.</p>
+
+    <label>Video Linki</label>
+    <input id="videoUrl" type="url" placeholder="https://www.youtube.com/watch?v=... veya herhangi bir video linki">
+
+    <button class="btn" id="downloadBtn">Indir</button>
+
+    <div class="status-box" id="statusBox">
+      <div class="status-text" id="statusText">Indiriliyor...</div>
+      <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+    </div>
+
+    <div class="result-box" id="resultBox">
+      <div style="font-size:18px;font-weight:700;color:#16a34a;">Hazir!</div>
+      <div id="resultFilename" style="font-size:13px;color:#475569;margin-top:4px;"></div>
+      <a id="resultDownload" href="#">MP4 Indir</a>
+    </div>
+
+    <div class="error-box" id="errorBox"></div>
+
+    <div class="supported">
+      Desteklenen siteler:
+      <span>YouTube</span> <span>X (Twitter)</span> <span>Instagram</span>
+      <span>TikTok</span> <span>Reddit</span> <span>Facebook</span>
+      <span>Twitch</span> <span>Dailymotion</span> <span>Vimeo</span>
+      <span>ve 1000+ site</span>
+    </div>
+  </div>
+</div>
+
+<script>
+  const $ = id => document.getElementById(id);
+  let pollTimer = null;
+
+  $("downloadBtn").addEventListener("click", async () => {
+    const url = $("videoUrl").value.trim();
+    if (!url) { alert("Bir video linki girin."); return; }
+
+    $("downloadBtn").disabled = true;
+    $("downloadBtn").textContent = "Baslatiliyor...";
+    $("statusBox").style.display = "block";
+    $("resultBox").style.display = "none";
+    $("errorBox").style.display = "none";
+    $("progressFill").style.width = "10%";
+    $("statusText").textContent = "Indirme baslatiliyor...";
+
+    try {
+      const res = await fetch("/api/download-video", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({url})
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showError(data.error || "Hata olustu.");
+        return;
+      }
+
+      pollStatus(data.dl_id);
+    } catch(e) {
+      showError("Baglanti hatasi: " + e.message);
+    }
+  });
+
+  function pollStatus(dlId) {
+    if (pollTimer) clearInterval(pollTimer);
+
+    pollTimer = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/download-video/${dlId}`);
+        const data = await res.json();
+
+        if (data.status === "downloading") {
+          $("progressFill").style.width = "50%";
+          if (data.progress) {
+            $("statusText").textContent = data.progress;
+            const m = data.progress.match(/([\d.]+)%/);
+            if (m) $("progressFill").style.width = m[1] + "%";
+          }
+        } else if (data.status === "done") {
+          clearInterval(pollTimer);
+          $("statusBox").style.display = "none";
+          $("resultBox").style.display = "block";
+          $("resultFilename").textContent = data.filename || "video.mp4";
+          $("resultDownload").href = data.download_url;
+          resetBtn();
+        } else if (data.status === "failed") {
+          clearInterval(pollTimer);
+          showError(data.error || "Indirme basarisiz.");
+        }
+      } catch(e) {
+        clearInterval(pollTimer);
+        showError("Durum sorgulamada hata.");
+      }
+    }, 1500);
+  }
+
+  function showError(msg) {
+    $("statusBox").style.display = "none";
+    $("errorBox").style.display = "block";
+    $("errorBox").textContent = msg;
+    resetBtn();
+  }
+
+  function resetBtn() {
+    $("downloadBtn").disabled = false;
+    $("downloadBtn").textContent = "Indir";
+  }
+</script>
+</body>
+</html>
