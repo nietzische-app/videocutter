@@ -116,6 +116,8 @@ def _process_video(video: dict, config: dict, openai_api_key: str) -> dict:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     caption = video.get("title", "")[:200] if config.get("auto_caption") else ""
+    channel_name = video.get("channel", "")
+    source_credit = f"Kaynak: @{channel_name.replace(' ', '')}" if channel_name else ""
 
     command = [
         sys.executable,
@@ -130,6 +132,8 @@ def _process_video(video: dict, config: dict, openai_api_key: str) -> dict:
         command.append("--template")
         if caption:
             command.extend(["--caption", caption])
+        if source_credit:
+            command.extend(["--source-credit", source_credit])
 
     cookies_file = PROJECT_DIR / "cookies.txt"
     if cookies_file.exists():

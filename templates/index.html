@@ -201,10 +201,14 @@
       </div>
     </div>
 
-    <div id="captionRow" class="row" style="grid-template-columns: 1fr;">
+    <div id="captionRow" class="row" style="grid-template-columns: 1fr 1fr;">
       <div>
         <label for="captionText">Ust Yazi (Caption)</label>
-        <input id="captionText" type="text" placeholder="Kaynak veya dikkat cekici bir yazi... (bos birakirsan AI baslik kullanilir)" maxlength="200">
+        <input id="captionText" type="text" placeholder="Dikkat cekici yazi... (bos = AI baslik)" maxlength="200">
+      </div>
+      <div>
+        <label for="sourceCredit">Kaynak (Telif Korumasi)</label>
+        <input id="sourceCredit" type="text" placeholder="Orn: Kaynak: @kanal_adi" maxlength="200">
       </div>
     </div>
 
@@ -444,7 +448,8 @@
         clip_seconds: Number($("clipSeconds").value || 30),
         subtitle_style: $("subtitleStyle").value,
         use_template: $("useTemplate").checked,
-        caption: $("captionText").value.trim()
+        caption: $("captionText").value.trim(),
+        source_credit: $("sourceCredit").value.trim()
       };
 
       try {

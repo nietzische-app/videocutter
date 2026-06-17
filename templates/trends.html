@@ -335,6 +335,8 @@
         body: JSON.stringify({
           url: v.url,
           caption: v.title,
+          channel: v.channel || "",
+          source_credit: "Kaynak: @" + (v.channel || "").replace(/\s+/g, ""),
           api_key: apiKey || "",
         })
       });

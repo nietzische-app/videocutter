@@ -103,6 +103,7 @@ def run_video_job(
     subtitle_style: str = "bold",
     use_template: bool = False,
     caption: str = "",
+    source_credit: str = "",
 ) -> None:
     output_path = OUTPUT_DIR / f"clip_{job_id}.mp4"
     env = os.environ.copy()
@@ -125,6 +126,8 @@ def run_video_job(
         command.append("--template")
         if caption:
             command.extend(["--caption", caption])
+        if source_credit:
+            command.extend(["--source-credit", source_credit])
 
     set_job(job_id, status="running", message="Video isleniyor...", output=None, log="", step="", candidates=None)
 
@@ -229,6 +232,7 @@ def create_job():
         subtitle_style = "bold"
     use_template = bool(payload.get("use_template", False))
     caption = str(payload.get("caption", "")).strip()[:200]
+    source_credit = str(payload.get("source_credit", "")).strip()[:200]
 
     if not video_input:
         return jsonify({"error": "Video yukleyin veya YouTube linki girin."}), 400
@@ -249,7 +253,7 @@ def create_job():
 
     thread = threading.Thread(
         target=run_video_job,
-        args=(job_id, video_input, api_key, clip_seconds, subtitle_style, use_template, caption),
+        args=(job_id, video_input, api_key, clip_seconds, subtitle_style, use_template, caption, source_credit),
         daemon=True,
     )
     thread.start()
@@ -373,12 +377,19 @@ def api_trend_process():
     payload = request.get_json(force=True)
     video_url = str(payload.get("url", "")).strip()
     caption = str(payload.get("caption", "")).strip()[:200]
+    source_credit = str(payload.get("source_credit", "")).strip()[:200]
+    channel_name = str(payload.get("channel", "")).strip()
     api_key = str(payload.get("api_key", "")).strip() or os.getenv("OPENAI_API_KEY", "")
 
     if not video_url:
         return jsonify({"error": "Video URL gerekli."}), 400
     if not api_key:
         return jsonify({"error": "OpenAI API key gerekli."}), 400
+
+    if not source_credit and channel_name:
+        source_credit = f"Kaynak: @{channel_name}"
+    elif not source_credit:
+        source_credit = f"Kaynak: {video_url.split('&')[0]}"
 
     config = load_config()
     job_id = uuid.uuid4().hex[:12]
@@ -387,7 +398,7 @@ def api_trend_process():
     thread = threading.Thread(
         target=run_video_job,
         args=(job_id, video_url, api_key, config.get("clip_seconds", 30),
-              config.get("subtitle_style", "bold"), config.get("use_template", True), caption),
+              config.get("subtitle_style", "bold"), config.get("use_template", True), caption, source_credit),
         daemon=True,
     )
     thread.start()

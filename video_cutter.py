@@ -661,81 +661,111 @@ def apply_template(
     start: float,
     end: float,
     caption_text: str = "",
+    source_credit: str = "",
     target_width: int = 1080,
     target_height: int = 1920,
 ) -> None:
-    """Blurred-background vertical template: original video centered, blurred fill behind, caption on top."""
+    """Blurred-background vertical template: original video centered, blurred fill behind, caption on top, credit at bottom."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fonts_dir = Path(__file__).resolve().parent / "fonts"
     font_file = fonts_dir / "Bangers-Regular.ttf"
 
-    safe_caption = caption_text.replace("'", "’").replace("\\", "\\\\").replace(":", "\\:").replace("%", "%%")
+    def _dt_escape(text):
+        t = text.replace("\\", "\\\\")
+        t = t.replace("’", "")
+        t = t.replace(":", "\\:")
+        t = t.replace("%", "%%")
+        t = t.replace("[", "\\[")
+        t = t.replace("]", "\\]")
+        return t
+
+    safe_caption = _dt_escape(caption_text) if caption_text else ""
+    safe_credit = _dt_escape(source_credit) if source_credit else ""
+
+    fontfile_opt = ""
+    if font_file.exists():
+        escaped_path = str(font_file).replace(":", "\\:")
+        fontfile_opt = "fontfile='" + escaped_path + "':"
 
     vf_parts = []
 
-    # [0:v] -> trimmed clip
-    vf_parts.append(f"[0:v]trim=start={start}:end={end},setpts=PTS-STARTPTS[trimmed]")
-
-    # Background: scale to fill 1080x1920, crop, then blur
+    # Trim the video segment and split into 3 copies (bg, fg, reserve)
     vf_parts.append(
-        f"[trimmed]scale={target_width}:{target_height}:force_original_aspect_ratio=increase,"
-        f"crop={target_width}:{target_height},"
-        f"gblur=sigma=40,eq=brightness=-0.08[bg]"
+        f"[0:v]trim=start={start}:end={end},setpts=PTS-STARTPTS,"
+        f"split=2[bg_src][fg_src]"
     )
 
-    # Foreground: scale to fit inside the frame with padding for caption area
+    # Background: scale to fill frame, crop center, blur + darken
+    vf_parts.append(
+        f"[bg_src]scale={target_width}:{target_height}:"
+        f"force_original_aspect_ratio=increase,"
+        f"crop={target_width}:{target_height},"
+        f"gblur=sigma=40,eq=brightness=-0.1[bg]"
+    )
+
+    # Foreground: scale to fit inside frame (55% of height for video content)
     content_height = int(target_height * 0.55)
     vf_parts.append(
-        f"[trimmed]scale={target_width}:{content_height}:force_original_aspect_ratio=decrease[fg]"
+        f"[fg_src]scale={target_width}:{content_height}:"
+        f"force_original_aspect_ratio=decrease[fg]"
     )
 
-    # Overlay foreground centered vertically (slightly below center to leave room for caption)
-    caption_area_height = int(target_height * 0.18)
-    overlay_y = f"(H-h)/2+{caption_area_height // 3}"
+    # Overlay foreground on blurred background, shifted down for caption space
+    caption_area_h = int(target_height * 0.16)
+    overlay_y = f"({caption_area_h}+(main_h-{caption_area_h}-overlay_h)/2)"
     vf_parts.append(f"[bg][fg]overlay=(W-w)/2:{overlay_y}[composed]")
 
-    # Add caption text at top
+    # Add top caption text
+    last_label = "[composed]"
+    label_idx = 0
+
     if safe_caption:
-        fontsize = 52
-        if font_file.exists():
-            fontfile_str = str(font_file).replace(":", "\\:")
-            text_filter = (
-                f"drawtext=fontfile='{fontfile_str}'"
-                f":text='{safe_caption}'"
-                f":fontcolor=white:fontsize={fontsize}"
-                f":borderw=3:bordercolor=black"
-                f":x=(w-text_w)/2:y={caption_area_height // 2 - fontsize // 2}"
-                f":line_spacing=8"
-            )
-        else:
-            text_filter = (
-                f"drawtext=font='Bangers'"
-                f":text='{safe_caption}'"
-                f":fontcolor=white:fontsize={fontsize}"
-                f":borderw=3:bordercolor=black"
-                f":x=(w-text_w)/2:y={caption_area_height // 2 - fontsize // 2}"
-                f":line_spacing=8"
-            )
-        vf_parts.append(f"[composed]{text_filter}[out]")
-        final_label = "[out]"
-    else:
-        final_label = "[composed]"
+        new_label = f"[cap{label_idx}]"
+        text_filter = (
+            f"{last_label}drawtext={fontfile_opt}"
+            f"text='{safe_caption}':"
+            f"fontcolor=white:fontsize=48:"
+            f"borderw=3:bordercolor=black:"
+            f"x=(w-text_w)/2:y={caption_area_h // 2 - 24}:"
+            f"line_spacing=8{new_label}"
+        )
+        vf_parts.append(text_filter)
+        last_label = new_label
+        label_idx += 1
+
+    # Add bottom credit/source text for copyright protection
+    if safe_credit:
+        new_label = f"[cap{label_idx}]"
+        credit_y = target_height - 80
+        credit_filter = (
+            f"{last_label}drawtext={fontfile_opt}"
+            f"text='{safe_credit}':"
+            f"fontcolor=white@0.85:fontsize=32:"
+            f"borderw=2:bordercolor=black@0.6:"
+            f"x=(w-text_w)/2:y={credit_y}{new_label}"
+        )
+        vf_parts.append(credit_filter)
+        last_label = new_label
+        label_idx += 1
 
     filter_complex = ";".join(vf_parts)
 
+    # Audio: trim with -ss/-t on output (after filter_complex handles video)
+    duration = end - start
     cmd = [
         "ffmpeg", "-y",
         "-i", str(input_video),
         "-filter_complex", filter_complex,
-        "-map", final_label,
+        "-map", last_label,
         "-map", "0:a?",
         "-ss", str(start),
-        "-t", str(end - start),
+        "-t", str(duration),
         "-c:v", "libx264",
         "-preset", "medium",
         "-crf", "23",
         "-c:a", "aac",
         "-b:a", "128k",
+        "-shortest",
         "-movflags", "+faststart",
         str(output_path),
     ]
@@ -790,6 +820,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--subtitle-style", default="bold", choices=["bold", "highlight", "minimal", "none"])
     parser.add_argument("--template", action="store_true", help="Blurred-background vertical template")
     parser.add_argument("--caption", default="", help="Caption text for template overlay")
+    parser.add_argument("--source-credit", default="", help="Source attribution text (copyright protection)")
     return parser.parse_args()
 
 
@@ -900,6 +931,7 @@ def main() -> None:
         use_subs = args.subtitle_style != "none"
         use_template = args.template
         caption = args.caption.strip()
+        source_credit = args.source_credit.strip()
 
         for i, cand in enumerate(candidates):
             start, end = clamp_clip(cand, video_duration, args.clip_seconds)
@@ -913,8 +945,11 @@ def main() -> None:
             target_w = int(args.target_height * DEFAULT_ASPECT_RATIO)
 
             if use_template:
-                # Template mode: blurred background + centered video + caption
+                # Template mode: blurred background + centered video + caption + credit
                 cand_caption = caption or cand.get("title", "")
+                cand_credit = source_credit
+                if not cand_credit and is_youtube_url(args.input):
+                    cand_credit = f"Kaynak: {args.input.split('&')[0]}"
                 raw_out = out.parent / f"{out.stem}_tmpl{out.suffix}"
                 apply_template(
                     input_video=input_path,
@@ -922,6 +957,7 @@ def main() -> None:
                     start=start,
                     end=end,
                     caption_text=cand_caption,
+                    source_credit=cand_credit,
                     target_width=target_w,
                     target_height=args.target_height,
                 )
