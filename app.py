@@ -3,6 +3,7 @@ import os
 import re
 import subprocess
 import sys
+from datetime import datetime, timezone
 import threading
 import time
 import uuid
@@ -16,6 +17,10 @@ from scheduler import (
     load_config, save_config, run_single_discovery,
     start_scheduler, stop_scheduler, is_scheduler_running,
     _load_log,
+)
+from publisher import (
+    load_publish_config, save_publish_config, publish_video,
+    get_publish_log,
 )
 
 
@@ -441,6 +446,78 @@ def api_scheduler_run_now():
 def api_scheduler_log():
     log = _load_log()
     return jsonify(log[-50:])
+
+
+# ── Publisher API ────────────────────────────────────────────────────
+
+
+@app.get("/publish")
+def publish_page():
+    return render_template("publish.html")
+
+
+@app.get("/api/publish/config")
+def api_publish_config():
+    return jsonify(load_publish_config())
+
+
+@app.post("/api/publish/config")
+def api_publish_config_update():
+    payload = request.get_json(force=True)
+    config = load_publish_config()
+    for platform in ("youtube", "tiktok", "instagram", "schedule"):
+        if platform in payload and isinstance(payload[platform], dict):
+            if platform not in config:
+                config[platform] = {}
+            config[platform].update(payload[platform])
+    save_publish_config(config)
+    return jsonify(config)
+
+
+@app.post("/api/publish/upload")
+def api_publish_upload():
+    """Bir klip dosyasını seçilen platformlara yükle."""
+    payload = request.get_json(force=True)
+    video_path = str(payload.get("video_path", "")).strip()
+    title = str(payload.get("title", "")).strip()[:200]
+    platforms = payload.get("platforms", [])
+
+    if not video_path or not Path(video_path).exists():
+        return jsonify({"error": "Gecerli bir video dosyasi gerekli."}), 400
+    if not title:
+        return jsonify({"error": "Baslik gerekli."}), 400
+
+    resolved = Path(video_path).resolve()
+    if not str(resolved).startswith(str(OUTPUT_DIR)):
+        return jsonify({"error": "Sadece outputs/ klasorundeki videolar yuklenebilir."}), 403
+
+    try:
+        results = publish_video(str(resolved), title, platforms or None)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    return jsonify({"results": results})
+
+
+@app.get("/api/publish/log")
+def api_publish_log():
+    return jsonify(get_publish_log(50))
+
+
+@app.get("/api/outputs")
+def api_list_outputs():
+    """Mevcut output dosyalarını listele."""
+    if not OUTPUT_DIR.exists():
+        return jsonify([])
+    files = []
+    for f in sorted(OUTPUT_DIR.glob("*.mp4"), key=lambda p: p.stat().st_mtime, reverse=True):
+        files.append({
+            "name": f.name,
+            "path": str(f),
+            "size_mb": round(f.stat().st_size / (1024 * 1024), 1),
+            "created": datetime.fromtimestamp(f.stat().st_mtime, tz=timezone.utc).strftime("%Y-%m-%d %H:%M"),
+        })
+    return jsonify(files[:50])
 
 
 if __name__ == "__main__":

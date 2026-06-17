@@ -14,3 +14,5 @@ work/
 trend_history.json
 schedule_log.json
 schedule_config.json
+publish_log.json
+publish_config.json
