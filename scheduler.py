@@ -1,4 +1,4 @@
-"""Otomasyon zamanlayıcı — trend videoları keşfet, kliple, kuyruğa al."""
+"""Otomasyon zamanlayıcı — trend videoları keşfet, kliple, kanallarına dağıt."""
 
 import json
 import os
@@ -10,6 +10,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from trend_discovery import discover_niche_videos, mark_processed, get_available_niches
+from channels import get_channels_by_category, add_to_queue, update_queue_item, increment_channel_stats, load_channels
+from publisher import publish_video, load_publish_config
 
 PROJECT_DIR = Path(__file__).resolve().parent
 OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", PROJECT_DIR / "outputs")).resolve()
@@ -32,6 +34,7 @@ def _default_config() -> dict:
         "subtitle_style": "bold",
         "use_template": True,
         "auto_caption": True,
+        "auto_publish": False,
     }
 
 
@@ -68,7 +71,7 @@ def _append_log(entry: dict) -> None:
 
 
 def run_single_discovery(config: dict | None = None) -> list[dict]:
-    """Tek seferlik trend keşfi + klipleme. Bulunan videoları döndürür."""
+    """Tek seferlik trend keşfi + klipleme + kanal dağıtımı."""
     config = config or load_config()
 
     youtube_api_key = os.getenv("YOUTUBE_API_KEY", "")
@@ -89,6 +92,8 @@ def run_single_discovery(config: dict | None = None) -> list[dict]:
                 max_results=config.get("clips_per_run", 3),
                 min_views=config.get("min_views", 50000),
             )
+            for v in videos:
+                v["niche"] = niche
             all_videos.extend(videos)
         except Exception as e:
             print(f"[Scheduler] Nis '{niche}' kesfinde hata: {e}")
@@ -102,6 +107,132 @@ def run_single_discovery(config: dict | None = None) -> list[dict]:
         result = _process_video(video, config, openai_api_key)
         results.append(result)
         mark_processed([video["video_id"]])
+
+        if result.get("status") == "done" and config.get("auto_publish"):
+            _distribute_to_channels(result, video, config)
+
+    return results
+
+
+def _distribute_to_channels(result: dict, video: dict, config: dict) -> None:
+    """Kliplenen videoyu ilgili kategorideki kanallara dağıt."""
+    output_path = result.get("output", "")
+    if not output_path or not Path(output_path).exists():
+        return
+
+    niche = video.get("niche", "eglence")
+    title = video.get("title", "")[:200]
+    channels = get_channels_by_category(niche)
+
+    if not channels:
+        print(f"[Scheduler] '{niche}' kategorisinde aktif kanal yok, kuyruga ekleniyor.")
+        add_to_queue(output_path, title, niche)
+        _append_log({
+            "time": _now_str(),
+            "type": "queued",
+            "video_id": video.get("video_id", ""),
+            "niche": niche,
+            "reason": "no_active_channels",
+        })
+        return
+
+    queue_item = add_to_queue(output_path, title, niche, [ch["id"] for ch in channels])
+    print(f"[Scheduler] '{title[:50]}...' -> {len(channels)} kanal(a) dagitiliyor")
+
+    for channel in channels:
+        _publish_to_channel(queue_item, channel, output_path, title, video)
+
+
+def _publish_to_channel(queue_item: dict, channel: dict, video_path: str, title: str, video: dict) -> None:
+    """Tek bir kanala yayınla."""
+    channel_id = channel["id"]
+    platform = channel.get("platform", "youtube")
+    account_id = channel.get("credentials", {}).get("account_id", "default")
+
+    desc_template = channel.get("description_template", "{title}")
+    tags = channel.get("tags", [])
+    description = desc_template.replace("{title}", title)
+    if tags:
+        hashtags = " ".join(f"#{t}" for t in tags)
+        if hashtags not in description:
+            description = f"{description}\n\n{hashtags}"
+
+    try:
+        if platform == "youtube":
+            from publisher import upload_to_youtube
+            visibility = "public"
+            result = upload_to_youtube(video_path, title, description, tags, visibility, account_id)
+        elif platform == "tiktok":
+            from publisher import upload_to_tiktok
+            result = upload_to_tiktok(video_path, description, account_id)
+        else:
+            result = {"status": "skipped", "reason": f"desteklenmeyen platform: {platform}"}
+
+        status = result.get("status", "error")
+        update_queue_item(queue_item["id"], channel_id, status, result)
+
+        if status == "done":
+            increment_channel_stats(channel_id)
+            print(f"[Scheduler] Yuklendi: {channel['name']} ({platform})")
+        else:
+            print(f"[Scheduler] Basarisiz: {channel['name']} - {result.get('error', 'bilinmeyen hata')}")
+
+        _append_log({
+            "time": _now_str(),
+            "type": "publish",
+            "video_id": video.get("video_id", ""),
+            "channel": channel["name"],
+            "platform": platform,
+            "status": status,
+            "error": result.get("error"),
+        })
+
+    except Exception as e:
+        update_queue_item(queue_item["id"], channel_id, "error", {"error": str(e)})
+        print(f"[Scheduler] Yayin hatasi ({channel['name']}): {e}")
+        _append_log({
+            "time": _now_str(),
+            "type": "publish_error",
+            "video_id": video.get("video_id", ""),
+            "channel": channel["name"],
+            "error": str(e),
+        })
+
+
+def process_pending_queue() -> list[dict]:
+    """Kuyrukta bekleyen (pending) videolari isle."""
+    data = load_channels()
+    results = []
+
+    for item in data["queue"]:
+        if item["status"] != "pending":
+            continue
+
+        video_path = item.get("video_path", "")
+        if not video_path or not Path(video_path).exists():
+            update_queue_item(item["id"], "_system", "error", {"error": "video dosyasi bulunamadi"})
+            continue
+
+        title = item.get("title", "")
+        category = item.get("category", "eglence")
+        target_ids = item.get("target_channels", [])
+
+        if not target_ids:
+            channels = get_channels_by_category(category)
+            target_ids = [ch["id"] for ch in channels]
+
+        all_channels = {ch["id"]: ch for ch in data["channels"]}
+
+        for ch_id in target_ids:
+            if ch_id in item.get("results", {}):
+                continue
+            channel = all_channels.get(ch_id)
+            if not channel or not channel.get("enabled"):
+                update_queue_item(item["id"], ch_id, "skipped", {"reason": "kanal devre disi"})
+                continue
+            _publish_to_channel(item, channel, video_path, title, {"video_id": "", "niche": category})
+
+        results.append(item["id"])
 
     return results
 
@@ -150,6 +281,7 @@ def _process_video(video: dict, config: dict, openai_api_key: str) -> dict:
         "channel": video["channel"],
         "views": video["view_count"],
         "url": video_url,
+        "niche": video.get("niche", ""),
     }
 
     try:
@@ -205,6 +337,14 @@ def _scheduler_loop() -> None:
         except Exception as e:
             print(f"[Scheduler] Hata: {e}")
             _append_log({"time": _now_str(), "type": "error", "error": str(e)})
+
+        if config.get("auto_publish"):
+            try:
+                processed = process_pending_queue()
+                if processed:
+                    print(f"[Scheduler] Kuyruktan {len(processed)} video islendi.")
+            except Exception as e:
+                print(f"[Scheduler] Kuyruk isleme hatasi: {e}")
 
         interval = max(10, config.get("interval_minutes", 360)) * 60
         wait_until = time.time() + interval

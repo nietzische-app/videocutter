@@ -16,7 +16,7 @@ from trend_discovery import discover_niche_videos, get_available_niches, mark_pr
 from scheduler import (
     load_config, save_config, run_single_discovery,
     start_scheduler, stop_scheduler, is_scheduler_running,
-    _load_log,
+    _load_log, process_pending_queue,
 )
 from publisher import (
     load_publish_config, save_publish_config, publish_video,
@@ -464,6 +464,16 @@ def api_scheduler_run_now():
 def api_scheduler_log():
     log = _load_log()
     return jsonify(log[-50:])
+
+
+@app.post("/api/scheduler/process-queue")
+def api_scheduler_process_queue():
+    """Kuyrukta bekleyen videoları ilgili kanallara yayınla."""
+    try:
+        processed = process_pending_queue()
+        return jsonify({"processed": len(processed), "item_ids": processed})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 # ── Publisher API ────────────────────────────────────────────────────

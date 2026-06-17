@@ -211,6 +211,10 @@
             <input type="checkbox" id="schedAutoCaption" checked style="width:16px;height:16px;accent-color:#1967d2;">
             <span style="font-size:13px;">Oto-Caption</span>
           </label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:0;">
+            <input type="checkbox" id="schedAutoPublish" style="width:16px;height:16px;accent-color:#e8710a;">
+            <span style="font-size:13px;">Oto-Paylas</span>
+          </label>
         </div>
 
         <button class="btn btn-primary btn-block" id="saveConfigBtn">Ayarlari Kaydet</button>
@@ -368,6 +372,7 @@
       $("schedSubStyle").value = cfg.subtitle_style || "bold";
       $("schedTemplate").checked = cfg.use_template !== false;
       $("schedAutoCaption").checked = cfg.auto_caption !== false;
+      $("schedAutoPublish").checked = cfg.auto_publish === true;
 
       if (cfg.niches && cfg.niches[0]) {
         selectedNiche = cfg.niches[0];
@@ -403,6 +408,7 @@
           subtitle_style: $("schedSubStyle").value,
           use_template: $("schedTemplate").checked,
           auto_caption: $("schedAutoCaption").checked,
+          auto_publish: $("schedAutoPublish").checked,
           min_views: Number($("minViews").value || 50000),
         })
       });
