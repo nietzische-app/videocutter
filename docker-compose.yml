@@ -1,13 +1,28 @@
 services:
-  video-cutter:
-    build: .
-    container_name: video-cutter
+  bgutil-pot:
+    image: brainicism/bgutil-ytdlp-pot-provider:latest
+    container_name: bgutil-pot
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:4416:4416"
+
+  shorts-factory:
+    build: .
+    container_name: shorts-factory
+    restart: unless-stopped
+    depends_on:
+      - bgutil-pot
     env_file:
       - .env
     environment:
       OUTPUT_DIR: /app/outputs
+      DATA_DIR: /app/data
+      BGUTIL_POT_URL: http://bgutil-pot:4416
     ports:
       - "127.0.0.1:7860:7860"
     volumes:
       - ./outputs:/app/outputs
+      - ./data:/app/data
+      - ./cookies.txt:/app/cookies.txt:ro
+      - ./client_secrets.json:/app/client_secrets.json:ro
+      - ./youtube_token.json:/app/youtube_token.json

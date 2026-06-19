@@ -13,8 +13,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
-RUN mkdir -p /app/outputs
+RUN mkdir -p /app/outputs /app/data && chmod +x /app/entrypoint.sh
 
 EXPOSE 7860
 
-CMD ["gunicorn", "--bind", "0.0.0.0:7860", "--timeout", "1800", "--workers", "1", "app:app"]
+ENTRYPOINT ["/app/entrypoint.sh"]
