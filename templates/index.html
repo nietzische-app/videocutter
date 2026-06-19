@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Video Kesici</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Inter, Segoe UI, Arial, sans-serif;
+      background: #f5f7fb;
+      color: #172033;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 28px;
+    }
+
+    main {
+      width: min(760px, 100%);
+      background: #ffffff;
+      border: 1px solid #d9e1ef;
+      border-radius: 8px;
+      box-shadow: 0 18px 60px rgba(24, 39, 75, 0.12);
+      padding: 28px;
+    }
+
+    h1 {
+      margin: 0 0 20px;
+      font-size: 28px;
+      line-height: 1.2;
+    }
+
+    label {
+      display: block;
+      margin: 16px 0 8px;
+      font-weight: 700;
+      font-size: 14px;
+    }
+
+    input {
+      width: 100%;
+      box-sizing: border-box;
+      border: 1px solid #b8c4d8;
+      border-radius: 6px;
+      padding: 12px 13px;
+      font: inherit;
+      background: #fff;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 150px;
+      gap: 14px;
+    }
+
+    button {
+      margin-top: 20px;
+      width: 100%;
+      border: 0;
+      border-radius: 6px;
+      padding: 13px 16px;
+      background: #1967d2;
+      color: white;
+      font: inherit;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      background: #8fa8cc;
+      cursor: wait;
+    }
+
+    #status {
+      margin-top: 18px;
+      min-height: 22px;
+      font-weight: 700;
+    }
+
+    pre {
+      display: none;
+      margin: 14px 0 0;
+      max-height: 260px;
+      overflow: auto;
+      white-space: pre-wrap;
+      background: #111827;
+      color: #d1fae5;
+      border-radius: 6px;
+      padding: 14px;
+      font-size: 13px;
+    }
+
+    a.download {
+      display: none;
+      margin-top: 16px;
+      text-align: center;
+      color: #0b57d0;
+      font-weight: 800;
+    }
+
+    @media (max-width: 640px) {
+      body { padding: 14px; }
+      main { padding: 20px; }
+      .row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Video Kesici</h1>
+
+    <label for="videoInput">YouTube linki veya bilgisayardaki video yolu</label>
+    <input id="videoInput" placeholder="https://www.youtube.com/watch?v=...">
+
+    <div class="row">
+      <div>
+        <label for="apiKey">OpenAI API key</label>
+        <input id="apiKey" type="password" placeholder="Sunucuda kayıtlıysa boş bırak">
+      </div>
+      <div>
+        <label for="clipSeconds">Süre</label>
+        <input id="clipSeconds" type="number" min="5" max="180" value="30">
+      </div>
+    </div>
+
+    <button id="startButton">Klibi oluştur</button>
+    <div id="status"></div>
+    <a id="downloadLink" class="download" href="#">MP4 indir</a>
+    <pre id="log"></pre>
+  </main>
+
+  <script>
+    const startButton = document.getElementById("startButton");
+    const statusBox = document.getElementById("status");
+    const logBox = document.getElementById("log");
+    const downloadLink = document.getElementById("downloadLink");
+
+    async function pollJob(jobId) {
+      const response = await fetch(`/api/jobs/${jobId}`);
+      const job = await response.json();
+
+      statusBox.textContent = job.message || job.status || "";
+      if (job.log) {
+        logBox.style.display = "block";
+        logBox.textContent = job.log;
+      }
+
+      if (job.status === "done") {
+        startButton.disabled = false;
+        downloadLink.style.display = "block";
+        downloadLink.href = job.download_url;
+        return;
+      }
+
+      if (job.status === "failed") {
+        startButton.disabled = false;
+        return;
+      }
+
+      setTimeout(() => pollJob(jobId), 1800);
+    }
+
+    startButton.addEventListener("click", async () => {
+      startButton.disabled = true;
+      downloadLink.style.display = "none";
+      logBox.style.display = "none";
+      logBox.textContent = "";
+      statusBox.textContent = "Baslatiliyor...";
+
+      const payload = {
+        video_input: document.getElementById("videoInput").value,
+        api_key: document.getElementById("apiKey").value,
+        clip_seconds: Number(document.getElementById("clipSeconds").value || 30)
+      };
+
+      try {
+        const response = await fetch("/api/jobs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "Islem baslatilamadi.");
+        }
+        pollJob(data.job_id);
+      } catch (error) {
+        statusBox.textContent = error.message;
+        startButton.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
