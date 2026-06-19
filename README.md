@@ -56,7 +56,7 @@ python video_cutter.py "C:\videolar\kaynak.mp4" `
   --clip-seconds 30 `
   --language tr `
   --whisper-model whisper-1 `
-  --gpt-model gpt-5.5 `
+  --gpt-model gpt-4o-mini `
   --target-height 1920 `
   -o "outputs\short.mp4"
 ```
