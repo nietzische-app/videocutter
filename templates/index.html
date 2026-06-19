@@ -3,146 +3,204 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Video Kesici</title>
+  <title>Shorts Fabrikasi</title>
   <style>
     :root {
-      color-scheme: light;
       font-family: Inter, Segoe UI, Arial, sans-serif;
-      background: #f5f7fb;
+      background: #eef1f6;
       color: #172033;
     }
-
-    body {
-      margin: 0;
-      min-height: 100vh;
-      display: grid;
-      place-items: center;
-      padding: 28px;
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 20px; }
+    .wrap { max-width: 1100px; margin: 0 auto; }
+    h1 { margin: 0 0 6px; font-size: 28px; }
+    .sub { color: #5a6478; margin-bottom: 24px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .card {
+      background: #fff; border: 1px solid #d9e1ef; border-radius: 10px;
+      padding: 20px; box-shadow: 0 8px 30px rgba(24,39,75,.08);
     }
-
-    main {
-      width: min(760px, 100%);
-      background: #ffffff;
-      border: 1px solid #d9e1ef;
-      border-radius: 8px;
-      box-shadow: 0 18px 60px rgba(24, 39, 75, 0.12);
-      padding: 28px;
+    .card h2 { margin: 0 0 14px; font-size: 18px; }
+    label { display: block; margin: 10px 0 6px; font-weight: 700; font-size: 13px; }
+    input, select, textarea {
+      width: 100%; border: 1px solid #b8c4d8; border-radius: 6px;
+      padding: 10px 12px; font: inherit;
     }
-
-    h1 {
-      margin: 0 0 20px;
-      font-size: 28px;
-      line-height: 1.2;
-    }
-
-    label {
-      display: block;
-      margin: 16px 0 8px;
-      font-weight: 700;
-      font-size: 14px;
-    }
-
-    input {
-      width: 100%;
-      box-sizing: border-box;
-      border: 1px solid #b8c4d8;
-      border-radius: 6px;
-      padding: 12px 13px;
-      font: inherit;
-      background: #fff;
-    }
-
-    .row {
-      display: grid;
-      grid-template-columns: 1fr 150px;
-      gap: 14px;
-    }
-
-    button {
-      margin-top: 20px;
-      width: 100%;
-      border: 0;
-      border-radius: 6px;
-      padding: 13px 16px;
-      background: #1967d2;
-      color: white;
-      font: inherit;
-      font-weight: 800;
-      cursor: pointer;
-    }
-
-    button:disabled {
-      background: #8fa8cc;
-      cursor: wait;
-    }
-
-    #status {
-      margin-top: 18px;
-      min-height: 22px;
-      font-weight: 700;
-    }
-
-    pre {
-      display: none;
-      margin: 14px 0 0;
-      max-height: 260px;
-      overflow: auto;
-      white-space: pre-wrap;
-      background: #111827;
-      color: #d1fae5;
-      border-radius: 6px;
-      padding: 14px;
-      font-size: 13px;
-    }
-
-    a.download {
-      display: none;
-      margin-top: 16px;
+    textarea { min-height: 80px; resize: vertical; }
+    .cats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+    .cat-btn {
+      border: 2px solid #d9e1ef; background: #f8faff; border-radius: 8px;
+      padding: 10px 8px; cursor: pointer; font: inherit; font-weight: 700;
       text-align: center;
-      color: #0b57d0;
-      font-weight: 800;
     }
-
-    @media (max-width: 640px) {
-      body { padding: 14px; }
-      main { padding: 20px; }
-      .row { grid-template-columns: 1fr; }
+    .cat-btn.active { border-color: #1967d2; background: #e8f0fe; color: #0b57d0; }
+    .btn {
+      border: 0; border-radius: 6px; padding: 11px 14px; font: inherit;
+      font-weight: 800; cursor: pointer; background: #1967d2; color: #fff;
+    }
+    .btn.secondary { background: #e8edf5; color: #172033; }
+    .btn:disabled { opacity: .6; cursor: wait; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+    .discover-list { max-height: 340px; overflow: auto; margin-top: 12px; }
+    .video-item {
+      display: flex; gap: 10px; align-items: center; padding: 10px;
+      border: 1px solid #e2e8f2; border-radius: 8px; margin-bottom: 8px;
+      cursor: pointer; transition: .15s;
+    }
+    .video-item:hover { border-color: #1967d2; background: #f5f9ff; }
+    .video-item img { width: 80px; height: 45px; object-fit: cover; border-radius: 4px; }
+    .video-item .meta { flex: 1; min-width: 0; }
+    .video-item .title { font-weight: 700; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .video-item .channel { font-size: 12px; color: #5a6478; }
+    #status { margin-top: 14px; font-weight: 700; min-height: 20px; }
+    pre {
+      display: none; margin-top: 12px; max-height: 200px; overflow: auto;
+      background: #111827; color: #d1fae5; padding: 12px; border-radius: 6px;
+      font-size: 12px; white-space: pre-wrap;
+    }
+    .result { display: none; margin-top: 14px; padding: 14px; background: #f0fdf4; border-radius: 8px; border: 1px solid #bbf7d0; }
+    .result a { color: #0b57d0; font-weight: 700; }
+    .jobs { margin-top: 18px; }
+    .job-row { padding: 10px; border-bottom: 1px solid #e8edf5; font-size: 13px; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 700; }
+    .badge.done { background: #dcfce7; color: #166534; }
+    .badge.failed { background: #fee2e2; color: #991b1b; }
+    .badge.running { background: #dbeafe; color: #1e40af; }
+    @media (max-width: 800px) {
+      .grid { grid-template-columns: 1fr; }
+      .cats { grid-template-columns: repeat(2, 1fr); }
     }
   </style>
 </head>
 <body>
-  <main>
-    <h1>Video Kesici</h1>
+  <div class="wrap">
+    <h1>Shorts Fabrikasi</h1>
+    <p class="sub">Viral videolari kes, sablonla, aciklama uret ve Shorts olarak indir.</p>
 
-    <label for="videoInput">YouTube linki</label>
-    <input id="videoInput" placeholder="https://www.youtube.com/watch?v=...">
+    <div class="cats" id="categoryButtons"></div>
 
-    <div class="row">
-      <div>
-        <label for="apiKey">OpenAI API key</label>
-        <input id="apiKey" type="password" placeholder="Sunucuda kayıtlıysa boş bırak">
+    <div class="grid">
+      <div class="card">
+        <h2>Otomatik Kesif</h2>
+        <p style="font-size:13px;color:#5a6478;margin:0 0 10px">Secili kategoride trend videolari bul.</p>
+        <button class="btn secondary" id="discoverBtn">Videolari Bul</button>
+        <div class="discover-list" id="discoverList"></div>
       </div>
-      <div>
-        <label for="clipSeconds">Süre</label>
-        <input id="clipSeconds" type="number" min="5" max="180" value="30">
+
+      <div class="card">
+        <h2>Manuel Ekle</h2>
+        <label for="videoInput">YouTube linki</label>
+        <input id="videoInput" placeholder="https://www.youtube.com/watch?v=...">
+        <label for="titleInput">Baslik (opsiyonel, bos birakilirsa AI secer)</label>
+        <input id="titleInput" placeholder="Ornek: En komik an!">
+        <div class="row">
+          <div style="flex:1">
+            <label for="clipSeconds">Sure (sn)</label>
+            <input id="clipSeconds" type="number" min="5" max="60" value="30">
+          </div>
+          <div style="flex:1">
+            <label for="apiKey">OpenAI API key</label>
+            <input id="apiKey" type="password" placeholder=".env varsa bos birak">
+          </div>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-weight:600">
+          <input type="checkbox" id="autoUpload" style="width:auto">
+          YouTube'a otomatik yukle (OAuth gerekli)
+        </label>
+        <div class="row">
+          <button class="btn" id="startBtn">Shorts Uret</button>
+        </div>
+        <div id="status"></div>
+        <div class="result" id="resultBox"></div>
+        <pre id="log"></pre>
       </div>
     </div>
 
-    <button id="startButton">Klibi oluştur</button>
-    <div id="status"></div>
-    <a id="downloadLink" class="download" href="#">MP4 indir</a>
-    <pre id="log"></pre>
-  </main>
+    <div class="card jobs">
+      <h2>Son Islemler</h2>
+      <div id="jobsList"><em>Henuz is yok.</em></div>
+    </div>
+  </div>
 
   <script>
-    const startButton = document.getElementById("startButton");
-    const statusBox = document.getElementById("status");
-    const logBox = document.getElementById("log");
-    const downloadLink = document.getElementById("downloadLink");
+    let categories = [];
+    let selectedCategory = "comedy";
+    let selectedVideo = null;
+
+    async function loadCategories() {
+      const res = await fetch("/api/categories");
+      categories = await res.json();
+      const container = document.getElementById("categoryButtons");
+      container.innerHTML = categories.map(c => `
+        <button class="cat-btn ${c.id === selectedCategory ? "active" : ""}" data-id="${c.id}">
+          ${c.emoji} ${c.name}
+        </button>
+      `).join("");
+      container.querySelectorAll(".cat-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          selectedCategory = btn.dataset.id;
+          loadCategories();
+        });
+      });
+    }
+
+    function renderDiscover(videos) {
+      const list = document.getElementById("discoverList");
+      if (!videos.length) {
+        list.innerHTML = "<p>Video bulunamadi.</p>";
+        return;
+      }
+      list.innerHTML = videos.map(v => `
+        <div class="video-item" data-url="${v.url}" data-title="${v.title.replace(/"/g, "&quot;")}" data-channel="${(v.channel||"").replace(/"/g, "&quot;")}">
+          <img src="${v.thumbnail}" alt="">
+          <div class="meta">
+            <div class="title">${v.title}</div>
+            <div class="channel">${v.channel || ""}</div>
+          </div>
+        </div>
+      `).join("");
+      list.querySelectorAll(".video-item").forEach(item => {
+        item.addEventListener("click", () => {
+          selectedVideo = {
+            url: item.dataset.url,
+            title: item.dataset.title,
+            channel: item.dataset.channel
+          };
+          document.getElementById("videoInput").value = selectedVideo.url;
+          document.getElementById("titleInput").value = "";
+          list.querySelectorAll(".video-item").forEach(el => el.style.borderColor = "");
+          item.style.borderColor = "#1967d2";
+        });
+      });
+    }
+
+    document.getElementById("discoverBtn").addEventListener("click", async () => {
+      const btn = document.getElementById("discoverBtn");
+      btn.disabled = true;
+      btn.textContent = "Araniyor...";
+      try {
+        const res = await fetch("/api/discover", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ category: selectedCategory, limit: 8 })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Kesif basarisiz");
+        renderDiscover(data.videos || []);
+      } catch (e) {
+        document.getElementById("discoverList").innerHTML = `<p style="color:red">${e.message}</p>`;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Videolari Bul";
+      }
+    });
 
     async function pollJob(jobId) {
-      const response = await fetch(`/api/jobs/${jobId}`);
-      const job = await response.json();
+      const res = await fetch(`/api/jobs/${jobId}`);
+      const job = await res.json();
+      const statusBox = document.getElementById("status");
+      const logBox = document.getElementById("log");
+      const resultBox = document.getElementById("resultBox");
 
       statusBox.textContent = job.message || job.status || "";
       if (job.log) {
@@ -151,49 +209,83 @@
       }
 
       if (job.status === "done") {
-        startButton.disabled = false;
-        downloadLink.style.display = "block";
-        downloadLink.href = job.download_url;
+        document.getElementById("startBtn").disabled = false;
+        resultBox.style.display = "block";
+        const meta = job.metadata || {};
+        resultBox.innerHTML = `
+          <strong>Hazir!</strong><br>
+          <a href="${job.download_url}">MP4 indir</a>
+          ${job.metadata_path ? ` | <a href="/download/${jobId}/metadata">Metadata indir</a>` : ""}
+          ${job.youtube ? `<br>YouTube: <a href="${job.youtube.url}" target="_blank">${job.youtube.url}</a>` : ""}
+          <br><br><label>Baslik</label>
+          <input id="copyTitle" value="${(meta.youtube_title||"").replace(/"/g, "&quot;")}" readonly>
+          <label>Aciklama</label>
+          <textarea id="copyDesc" readonly>${meta.description || ""}</textarea>
+        `;
+        refreshJobs();
         return;
       }
-
       if (job.status === "failed") {
-        startButton.disabled = false;
+        document.getElementById("startBtn").disabled = false;
+        refreshJobs();
         return;
       }
-
-      setTimeout(() => pollJob(jobId), 1800);
+      setTimeout(() => pollJob(jobId), 2000);
     }
 
-    startButton.addEventListener("click", async () => {
-      startButton.disabled = true;
-      downloadLink.style.display = "none";
-      logBox.style.display = "none";
-      logBox.textContent = "";
-      statusBox.textContent = "Baslatiliyor...";
+    document.getElementById("startBtn").addEventListener("click", async () => {
+      const btn = document.getElementById("startBtn");
+      btn.disabled = true;
+      document.getElementById("resultBox").style.display = "none";
+      document.getElementById("log").style.display = "none";
+      document.getElementById("status").textContent = "Baslatiliyor...";
 
       const payload = {
         video_input: document.getElementById("videoInput").value,
         api_key: document.getElementById("apiKey").value,
-        clip_seconds: Number(document.getElementById("clipSeconds").value || 30)
+        clip_seconds: Number(document.getElementById("clipSeconds").value || 30),
+        category: selectedCategory,
+        title: document.getElementById("titleInput").value || null,
+        source_channel: selectedVideo?.channel || null,
+        source_url: document.getElementById("videoInput").value,
+        auto_upload: document.getElementById("autoUpload").checked
       };
 
       try {
-        const response = await fetch("/api/jobs", {
+        const res = await fetch("/api/jobs", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload)
         });
-        const data = await response.json();
-        if (!response.ok) {
-          throw new Error(data.error || "Islem baslatilamadi.");
-        }
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Baslatilamadi");
         pollJob(data.job_id);
-      } catch (error) {
-        statusBox.textContent = error.message;
-        startButton.disabled = false;
+      } catch (e) {
+        document.getElementById("status").textContent = e.message;
+        btn.disabled = false;
       }
     });
+
+    async function refreshJobs() {
+      const res = await fetch("/api/jobs");
+      const data = await res.json();
+      const list = document.getElementById("jobsList");
+      const jobs = data.jobs || [];
+      if (!jobs.length) {
+        list.innerHTML = "<em>Henuz is yok.</em>";
+        return;
+      }
+      list.innerHTML = jobs.map(j => `
+        <div class="job-row">
+          <span class="badge ${j.status}">${j.status}</span>
+          ${j.category || ""} — ${j.message || ""}
+          ${j.download_url ? `<a href="${j.download_url}">indir</a>` : ""}
+        </div>
+      `).join("");
+    }
+
+    loadCategories();
+    refreshJobs();
   </script>
 </body>
 </html>

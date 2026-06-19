@@ -9,3 +9,6 @@ work/
 *.m4a
 *.webm
 *.mov
+youtube_token.json
+client_secrets.json
+token.json
