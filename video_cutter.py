@@ -2,11 +2,17 @@ import argparse
 import json
 import math
 import os
+import shutil
+import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from urllib.parse import urlparse
 
+from dotenv import load_dotenv
 from openai import OpenAI
+
+load_dotenv()
 
 try:
     from moviepy import VideoFileClip
@@ -16,7 +22,30 @@ except ImportError:  # MoviePy 1.x
 
 DEFAULT_CLIP_SECONDS = 30.0
 DEFAULT_ASPECT_RATIO = 9 / 16
+DEFAULT_GPT_MODEL = os.getenv("GPT_MODEL", "gpt-4o-mini")
+MAX_WHISPER_BYTES = 24 * 1024 * 1024
 YOUTUBE_HOSTS = {"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"}
+
+CLIP_SELECTION_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "start_time": {"type": "number", "description": "Chosen clip start time in seconds."},
+        "end_time": {"type": "number", "description": "Chosen clip end time in seconds."},
+        "score": {"type": "integer", "minimum": 1, "maximum": 10},
+        "reason": {"type": "string"},
+        "title": {"type": "string"},
+    },
+    "required": ["start_time", "end_time", "score", "reason", "title"],
+}
+
+
+def check_ffmpeg() -> None:
+    if shutil.which("ffmpeg") is None:
+        raise RuntimeError(
+            "ffmpeg bulunamadi. Kurulum: https://ffmpeg.org/download.html "
+            "(Windows: winget install ffmpeg, Linux: apt install ffmpeg)"
+        )
 
 
 def is_url(value: str) -> bool:
@@ -37,6 +66,12 @@ def seconds_to_stamp(seconds: float) -> str:
     return f"{hours:02d}:{minutes:02d}:{sec:05.2f}"
 
 
+def make_subclip(video, start: float, end: float):
+    if hasattr(video, "subclipped"):
+        return video.subclipped(start, end)
+    return video.subclip(start, end)
+
+
 def extract_audio(video_path: Path, audio_path: Path) -> None:
     with VideoFileClip(str(video_path)) as video:
         if video.audio is None:
@@ -48,6 +83,37 @@ def extract_audio(video_path: Path, audio_path: Path) -> None:
             codec="libmp3lame",
             logger=None,
         )
+
+
+def prepare_audio_for_whisper(audio_path: Path) -> Path:
+    if audio_path.stat().st_size <= MAX_WHISPER_BYTES:
+        return audio_path
+
+    compressed = audio_path.with_name("audio_whisper.mp3")
+    print(f"Ses dosyasi buyuk ({audio_path.stat().st_size // (1024 * 1024)} MB), sikistiriliyor...")
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(audio_path),
+            "-ac",
+            "1",
+            "-ar",
+            "16000",
+            "-b:a",
+            "32k",
+            str(compressed),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    if compressed.stat().st_size > MAX_WHISPER_BYTES:
+        raise RuntimeError(
+            "Ses dosyasi Whisper limitini (25 MB) asiyor. Daha kisa bir video deneyin."
+        )
+    return compressed
 
 
 def download_youtube_video(url: str, output_dir: Path) -> Path:
@@ -67,14 +133,17 @@ def download_youtube_video(url: str, output_dir: Path) -> Path:
         "noplaylist": True,
     }
 
-    with YoutubeDL(options) as ydl:
-        info = ydl.extract_info(url, download=True)
-        downloaded = Path(ydl.prepare_filename(info))
-        merged = downloaded.with_suffix(".mp4")
-        if merged.exists():
-            return merged
-        if downloaded.exists():
-            return downloaded
+    try:
+        with YoutubeDL(options) as ydl:
+            info = ydl.extract_info(url, download=True)
+            downloaded = Path(ydl.prepare_filename(info))
+            merged = downloaded.with_suffix(".mp4")
+            if merged.exists():
+                return merged
+            if downloaded.exists():
+                return downloaded
+    except Exception as exc:
+        raise RuntimeError(f"YouTube indirme hatasi: {exc}") from exc
 
     candidates = sorted(output_dir.glob("youtube_source.*"))
     if not candidates:
@@ -145,6 +214,74 @@ def transcript_for_prompt(lines: list[dict], max_chars: int) -> str:
     )
 
 
+def _clip_prompt(transcript: str, video_duration: float, clip_seconds: float) -> tuple[str, str]:
+    system = (
+        "Sen kısa video editörüsün. Transkriptte en heyecanlı, merak uyandıran, "
+        "duygusal, komik veya vurucu anı bul. Yalnızca JSON şemasına uygun yanıt ver."
+    )
+    user = (
+        f"Video suresi: {video_duration:.2f} saniye.\n"
+        f"Istenen klip suresi: {clip_seconds:.2f} saniye.\n\n"
+        "Gorev: En iyi tek klip araligini sec. Secilen aralik mumkun oldugunca "
+        "tam istenen surede olsun, video sinirlarini asmasin ve cumlenin ortasinda "
+        "baslamamaya calissin.\n\n"
+        f"Transkript:\n{transcript}"
+    )
+    return system, user
+
+
+def ask_gpt_responses(
+    client: OpenAI,
+    model: str,
+    transcript: str,
+    video_duration: float,
+    clip_seconds: float,
+) -> dict:
+    system, user = _clip_prompt(transcript, video_duration, clip_seconds)
+    response = client.responses.create(
+        model=model,
+        input=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        text={
+            "format": {
+                "type": "json_schema",
+                "name": "clip_selection",
+                "strict": True,
+                "schema": CLIP_SELECTION_SCHEMA,
+            }
+        },
+    )
+    return json.loads(response.output_text)
+
+
+def ask_gpt_chat(
+    client: OpenAI,
+    model: str,
+    transcript: str,
+    video_duration: float,
+    clip_seconds: float,
+) -> dict:
+    system, user = _clip_prompt(transcript, video_duration, clip_seconds)
+    response = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        response_format={
+            "type": "json_schema",
+            "json_schema": {
+                "name": "clip_selection",
+                "strict": True,
+                "schema": CLIP_SELECTION_SCHEMA,
+            },
+        },
+    )
+    return json.loads(response.choices[0].message.content)
+
+
 def ask_gpt_for_clip(
     client: OpenAI,
     model: str,
@@ -152,51 +289,21 @@ def ask_gpt_for_clip(
     video_duration: float,
     clip_seconds: float,
 ) -> dict:
-    schema = {
-        "type": "object",
-        "additionalProperties": False,
-        "properties": {
-            "start_time": {"type": "number", "description": "Chosen clip start time in seconds."},
-            "end_time": {"type": "number", "description": "Chosen clip end time in seconds."},
-            "score": {"type": "integer", "minimum": 1, "maximum": 10},
-            "reason": {"type": "string"},
-            "title": {"type": "string"},
-        },
-        "required": ["start_time", "end_time", "score", "reason", "title"],
-    }
+    models = [model]
+    if DEFAULT_GPT_MODEL not in models:
+        models.append(DEFAULT_GPT_MODEL)
 
-    response = client.responses.create(
-        model=model,
-        input=[
-            {
-                "role": "system",
-                "content": (
-                    "Sen kısa video editörüsün. Transkriptte en heyecanlı, merak uyandıran, "
-                    "duygusal, komik veya vurucu anı bul. Yalnızca JSON şemasına uygun yanıt ver."
-                ),
-            },
-            {
-                "role": "user",
-                "content": (
-                    f"Video suresi: {video_duration:.2f} saniye.\n"
-                    f"Istenen klip suresi: {clip_seconds:.2f} saniye.\n\n"
-                    "Gorev: En iyi tek klip araligini sec. Secilen aralik mumkun oldugunca "
-                    "tam istenen surede olsun, video sinirlarini asmasin ve cumlenin ortasinda "
-                    "baslamamaya calissin.\n\n"
-                    f"Transkript:\n{transcript}"
-                ),
-            },
-        ],
-        text={
-            "format": {
-                "type": "json_schema",
-                "name": "clip_selection",
-                "strict": True,
-                "schema": schema,
-            }
-        },
-    )
-    return json.loads(response.output_text)
+    last_error: Exception | None = None
+    for candidate in dict.fromkeys(models):
+        for ask_fn in (ask_gpt_responses, ask_gpt_chat):
+            try:
+                print(f"GPT model deneniyor: {candidate} ({ask_fn.__name__})")
+                return ask_fn(client, candidate, transcript, video_duration, clip_seconds)
+            except Exception as exc:
+                last_error = exc
+                print(f"  basarisiz: {exc}", file=sys.stderr)
+
+    raise RuntimeError(f"GPT klip secimi basarisiz. Son hata: {last_error}")
 
 
 def clamp_clip(selection: dict, video_duration: float, clip_seconds: float) -> tuple[float, float]:
@@ -216,10 +323,10 @@ def clamp_clip(selection: dict, video_duration: float, clip_seconds: float) -> t
 
 
 def crop_clip(clip, *, x1: int, y1: int, width: int, height: int):
-    if hasattr(clip, "crop"):
-        return clip.crop(x1=x1, y1=y1, width=width, height=height)
     if hasattr(clip, "cropped"):
         return clip.cropped(x1=x1, y1=y1, width=width, height=height)
+    if hasattr(clip, "crop"):
+        return clip.crop(x1=x1, y1=y1, width=width, height=height)
 
     from moviepy import vfx
 
@@ -227,10 +334,10 @@ def crop_clip(clip, *, x1: int, y1: int, width: int, height: int):
 
 
 def resize_clip(clip, *, height: int):
-    if hasattr(clip, "resize"):
-        return clip.resize(height=height)
     if hasattr(clip, "resized"):
         return clip.resized(height=height)
+    if hasattr(clip, "resize"):
+        return clip.resize(height=height)
 
     from moviepy import vfx
 
@@ -262,23 +369,21 @@ def cut_vertical_video(
 ) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with VideoFileClip(str(input_path)) as video:
-        try:
-            subclip = video.subclip(start, end)
-        except AttributeError:  # MoviePy 2.x
-            subclip = video.subclipped(start, end)
-
+        subclip = make_subclip(video, start, end)
         vertical = crop_to_vertical(subclip, target_height)
-        vertical.write_videofile(
-            str(output_path),
-            codec="libx264",
-            audio_codec="aac",
-            fps=video.fps or 30,
-            preset="medium",
-            threads=max(1, min(4, os.cpu_count() or 1)),
-        )
-
-        vertical.close()
-        subclip.close()
+        try:
+            vertical.write_videofile(
+                str(output_path),
+                codec="libx264",
+                audio_codec="aac",
+                fps=video.fps or 30,
+                preset="medium",
+                threads=max(1, min(4, os.cpu_count() or 1)),
+                logger=None,
+            )
+        finally:
+            vertical.close()
+            subclip.close()
 
 
 def parse_args() -> argparse.Namespace:
@@ -289,8 +394,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("-o", "--output", type=Path, default=Path("outputs/clip_vertical.mp4"))
     parser.add_argument("--clip-seconds", type=float, default=DEFAULT_CLIP_SECONDS)
     parser.add_argument("--language", default="tr", help="Transkripsiyon dili. Otomatik algılama için boş bırakın.")
-    parser.add_argument("--whisper-model", default="whisper-1")
-    parser.add_argument("--gpt-model", default="gpt-5.5")
+    parser.add_argument("--whisper-model", default=os.getenv("WHISPER_MODEL", "whisper-1"))
+    parser.add_argument("--gpt-model", default=DEFAULT_GPT_MODEL)
     parser.add_argument("--target-height", type=int, default=1920)
     parser.add_argument("--max-transcript-chars", type=int, default=100_000)
     return parser.parse_args()
@@ -303,8 +408,17 @@ def main() -> None:
     if args.clip_seconds <= 0 or not math.isfinite(args.clip_seconds):
         raise ValueError("--clip-seconds pozitif bir sayı olmalı.")
 
+    check_ffmpeg()
+
+    if not os.getenv("OPENAI_API_KEY"):
+        raise RuntimeError(
+            'OPENAI_API_KEY ayarlanmamis. Ornek: export OPENAI_API_KEY="sk-..." '
+            "veya .env dosyasi olusturun."
+        )
+
     client = OpenAI()
 
+    # Tum gecici dosyalar (YouTube indirmesi dahil) kesim bitene kadar tutulur.
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
         if is_url(args.input):
@@ -315,16 +429,17 @@ def main() -> None:
         else:
             input_path = Path(args.input).resolve()
             if not input_path.exists():
-                raise FileNotFoundError(f"Video bulunamadı: {input_path}")
+                raise FileNotFoundError(f"Video bulunamadi: {input_path}")
 
         with VideoFileClip(str(input_path)) as video:
             video_duration = float(video.duration)
 
-        audio_path = Path(tmpdir) / "audio.mp3"
-        print("1/4 Ses çıkarılıyor...")
+        audio_path = tmp_path / "audio.mp3"
+        print("1/4 Ses cikariliyor...")
         extract_audio(input_path, audio_path)
+        audio_path = prepare_audio_for_whisper(audio_path)
 
-        print("2/4 Ses metne dökülüyor...")
+        print("2/4 Ses metne dokuluyor...")
         transcript_json = transcribe_audio(
             client=client,
             audio_path=audio_path,
@@ -332,32 +447,33 @@ def main() -> None:
             language=args.language or None,
         )
 
-    words = transcript_json.get("words") or []
-    if not words:
-        raise RuntimeError("Transkripsiyondan kelime zaman damgası alınamadı.")
+        words = transcript_json.get("words") or []
+        if not words:
+            raise RuntimeError("Transkripsiyondan kelime zaman damgasi alinamadi.")
 
-    lines = words_to_timed_lines(words)
-    prompt_transcript = transcript_for_prompt(lines, args.max_transcript_chars)
+        lines = words_to_timed_lines(words)
+        prompt_transcript = transcript_for_prompt(lines, args.max_transcript_chars)
 
-    print("3/4 GPT en iyi anı seçiyor...")
-    selection = ask_gpt_for_clip(
-        client=client,
-        model=args.gpt_model,
-        transcript=prompt_transcript,
-        video_duration=video_duration,
-        clip_seconds=args.clip_seconds,
-    )
-    start, end = clamp_clip(selection, video_duration, args.clip_seconds)
+        print("3/4 GPT en iyi ani seciyor...")
+        selection = ask_gpt_for_clip(
+            client=client,
+            model=args.gpt_model,
+            transcript=prompt_transcript,
+            video_duration=video_duration,
+            clip_seconds=args.clip_seconds,
+        )
+        start, end = clamp_clip(selection, video_duration, args.clip_seconds)
 
-    print(
-        "Seçilen aralık:",
-        f"{seconds_to_stamp(start)} - {seconds_to_stamp(end)}",
-        f"(puan: {selection.get('score')}/10)",
-    )
-    print("Gerekçe:", selection.get("reason", ""))
+        print(
+            "Secilen aralik:",
+            f"{seconds_to_stamp(start)} - {seconds_to_stamp(end)}",
+            f"(puan: {selection.get('score')}/10)",
+        )
+        print("Gerekce:", selection.get("reason", ""))
 
-    print("4/4 Dikey video kesiliyor...")
-    cut_vertical_video(input_path, output_path, start, end, args.target_height)
+        print("4/4 Dikey video kesiliyor...")
+        cut_vertical_video(input_path, output_path, start, end, args.target_height)
+
     print(f"Bitti: {output_path}")
 
 

@@ -12,8 +12,7 @@ $ProjectDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $ProjectDir
 
 function Get-PythonCommand {
-    $bundledPython = "C:\Users\n.duman\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe"
-    $candidates = @("python", "py", "python3", $bundledPython)
+    $candidates = @("python", "py", "python3")
     foreach ($candidate in $candidates) {
         $command = Get-Command $candidate -ErrorAction SilentlyContinue
         if (-not $command) {
