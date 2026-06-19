@@ -46,6 +46,42 @@ python shorts_pipeline.py "https://www.youtube.com/watch?v=..." -o outputs/short
 3. `python youtube_upload.py --auth` calistir
 4. Web arayuzunde "YouTube'a otomatik yukle" sec
 
+## Otomatik pilot (elle mudahale yok)
+
+`.env` dosyasinda `SCHEDULER_ENABLED=true` yap. Sistem belirledigin saatlerde:
+
+1. Her kategoride viral video arar
+2. Shorts uretir (sablon + metadata)
+3. YouTube'a yukler (OAuth ayarliysa)
+
+```env
+SCHEDULER_ENABLED=true
+SCHEDULER_CRON=0 10,18 * * *    # her gun 10:00 ve 18:00
+SCHEDULER_VIDEOS_PER_CATEGORY=1
+SCHEDULER_MAX_PER_RUN=6
+SCHEDULER_AUTO_UPLOAD=true
+```
+
+### Docker ile tam otomatik
+
+```bash
+cp .env.example .env
+# .env duzenle
+docker compose up -d --build
+```
+
+Sunucu yeniden baslasa bile container `restart: unless-stopped` ile devam eder.
+
+### Windows'ta arka planda
+
+```powershell
+python app.py
+```
+
+`.env` icinde scheduler aciksa uygulama acilir acilmaz arka planda calisir.
+
+Tek seferlik test: `python scheduler_service.py --once`
+
 ---
 
 # Otomatik Video Kesici (temel motor)

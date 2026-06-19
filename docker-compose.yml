@@ -1,13 +1,17 @@
 services:
-  video-cutter:
+  shorts-factory:
     build: .
-    container_name: video-cutter
+    container_name: shorts-factory
     restart: unless-stopped
     env_file:
       - .env
     environment:
       OUTPUT_DIR: /app/outputs
+      DATA_DIR: /app/data
     ports:
       - "127.0.0.1:7860:7860"
     volumes:
       - ./outputs:/app/outputs
+      - ./data:/app/data
+      - ./client_secrets.json:/app/client_secrets.json:ro
+      - ./youtube_token.json:/app/youtube_token.json
