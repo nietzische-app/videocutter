@@ -12,6 +12,8 @@ from urllib.parse import urlparse
 from dotenv import load_dotenv
 from openai import OpenAI
 
+from youtube_dl import download_youtube_video
+
 load_dotenv()
 
 try:
@@ -114,41 +116,6 @@ def prepare_audio_for_whisper(audio_path: Path) -> Path:
             "Ses dosyasi Whisper limitini (25 MB) asiyor. Daha kisa bir video deneyin."
         )
     return compressed
-
-
-def download_youtube_video(url: str, output_dir: Path) -> Path:
-    try:
-        from yt_dlp import YoutubeDL
-    except ImportError as exc:
-        raise RuntimeError(
-            "YouTube linki kullanmak icin yt-dlp gerekli. Kurulum: python -m pip install yt-dlp"
-        ) from exc
-
-    output_template = str(output_dir / "youtube_source.%(ext)s")
-    options = {
-        "format": "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/best",
-        "merge_output_format": "mp4",
-        "outtmpl": output_template,
-        "quiet": False,
-        "noplaylist": True,
-    }
-
-    try:
-        with YoutubeDL(options) as ydl:
-            info = ydl.extract_info(url, download=True)
-            downloaded = Path(ydl.prepare_filename(info))
-            merged = downloaded.with_suffix(".mp4")
-            if merged.exists():
-                return merged
-            if downloaded.exists():
-                return downloaded
-    except Exception as exc:
-        raise RuntimeError(f"YouTube indirme hatasi: {exc}") from exc
-
-    candidates = sorted(output_dir.glob("youtube_source.*"))
-    if not candidates:
-        raise RuntimeError("YouTube videosu indirildi gibi gorunuyor ama dosya bulunamadi.")
-    return candidates[0]
 
 
 def transcribe_audio(client: OpenAI, audio_path: Path, whisper_model: str, language: str | None) -> dict:

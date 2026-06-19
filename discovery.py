@@ -5,6 +5,7 @@ from __future__ import annotations
 import random
 
 from categories import CATEGORIES, get_category
+from youtube_dl import build_ytdlp_options
 
 
 def _normalize_entry(entry: dict) -> dict | None:
@@ -30,12 +31,7 @@ def search_youtube(query: str, limit: int = 8) -> list[dict]:
     except ImportError as exc:
         raise RuntimeError("yt-dlp gerekli: python -m pip install yt-dlp") from exc
 
-    options = {
-        "quiet": True,
-        "no_warnings": True,
-        "extract_flat": True,
-        "skip_download": True,
-    }
+    options = build_ytdlp_options(quiet=True, extract_flat=True)
 
     with YoutubeDL(options) as ydl:
         result = ydl.extract_info(f"ytsearch{limit}:{query}", download=False)

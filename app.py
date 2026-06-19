@@ -13,6 +13,7 @@ from discovery import discover_for_category  # noqa: E402
 from job_store import get_job, list_jobs, load_scheduler_state  # noqa: E402
 from jobs import enqueue_job  # noqa: E402
 from scheduler_service import get_config, run_scheduled_batch  # noqa: E402
+from youtube_dl import check_cookies_health  # noqa: E402
 
 try:
     from youtube_upload import is_configured as youtube_configured
@@ -33,11 +34,14 @@ app = Flask(__name__)
 
 def check_dependencies() -> dict:
     config = get_config()
+    cookies = check_cookies_health()
     return {
         "ffmpeg": shutil.which("ffmpeg") is not None,
         "openai_api_key": bool(os.getenv("OPENAI_API_KEY")),
         "youtube_upload": youtube_configured(),
         "scheduler_enabled": config["enabled"],
+        "youtube_cookies": cookies,
+        "pot_provider": bool(os.getenv("BGUTIL_POT_URL", "").strip()),
     }
 
 

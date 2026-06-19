@@ -82,6 +82,8 @@ python app.py
 
 Tek seferlik test: `python scheduler_service.py --once`
 
+YouTube bot/cookie sorunlari icin: [COOKIES.md](COOKIES.md)
+
 ---
 
 # Otomatik Video Kesici (temel motor)
